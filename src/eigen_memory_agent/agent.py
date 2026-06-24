@@ -22,6 +22,10 @@ EPISODIC_WRITE_NLL = 1.0
 # this bar. Set higher than the write bar so axioms form from the *most* surprising
 # events, not every recorded one.
 EIGEN_CRYSTALLIZE_NLL = 1.5
+# Cap on the prediction call's chain-of-thought tokens. Enough room for a short
+# <thought> block plus the final label line, without the ~1.3k-char ramble that
+# makes each call slow and tends to make a 4B model drift.
+PREDICTION_MAX_TOKENS = 200
 
 
 def _extract_nll(top_logprobs, true_label):
@@ -119,7 +123,11 @@ class AgenticMemoryLoop:
                     model=self.model,
                     messages=[{"role": "user", "content": prompt}],
                     logprobs=True,
-                    top_logprobs=5 # To see distribution across labels
+                    top_logprobs=5,  # To see distribution across labels
+                    # Cap the chain-of-thought. Uncapped, gemma3:4b emits ~1.3k chars
+                    # of reasoning per call (slow, and long CoT tends to drift on a
+                    # 4B model). A short budget keeps the final RED/BLUE/GREEN line.
+                    max_tokens=PREDICTION_MAX_TOKENS,
                 )
                 raw = pred_resp.choices[0].message.content
                 predictions.append(raw)
