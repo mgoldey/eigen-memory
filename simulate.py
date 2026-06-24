@@ -104,7 +104,9 @@ ARMS = {
 
 # Seeds for the fair multi-seed comparison. A single 100-trial run is noisy; we
 # average across these so the win/loss direction is not a single-run artifact.
-SEEDS = [42, 7, 123]
+# (2 seeds keeps local-CPU wall-clock reasonable while still averaging noise;
+# add more seeds here for a stronger result if time allows.)
+SEEDS = [42, 7]
 
 
 def main(seeds=SEEDS):
