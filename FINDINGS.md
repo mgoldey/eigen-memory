@@ -7,22 +7,29 @@
 
 I built a surprise-gated "eigen-memory" agent, made the mechanism genuinely work (fixing
 bugs that had silently turned the surprise signal into a constant), ran a controlled
-multi-seed experiment — and found that the **experiment as designed cannot demonstrate the
-hypothesis**. Eigen-memory does <!-- not / not clearly --> beat plain RAG here, but the more
-important finding is *why the task can't show a difference even in principle*: the embedding
-substrate is blind to the (arithmetic) rule, the task rewards memorization over
-generalization, and the effect is below the noise floor. The deliverable is a rigorous
-post-mortem, not a win.
+multi-seed experiment — and found that the **three arms are statistically indistinguishable**.
+Eigen-memory shows a faint hint of higher cumulative accuracy (0.55 vs ~0.46), but the error
+bands overlap completely, so it is not a defensible win. The more important finding is *why the
+task can't show a difference even in principle*: the embedding substrate is blind to the
+(arithmetic) rule, the task rewards memorization over generalization, and the effect is below
+the noise floor. The deliverable is a rigorous post-mortem, not a win.
 
-## Final accuracy (mean of 2 seeds, last batch)
+## Results (mean of 2 seeds, 100 trials each)
 
-| Arm | Final accuracy |
-|-----|----------------|
-| Baseline (no memory) | <!-- ACC_BASELINE --> |
-| Control_RAG (retrieval) | <!-- ACC_RAG --> |
-| Treatment_Eigen (retrieval + axioms) | <!-- ACC_EIGEN --> |
+| Arm | Final-batch accuracy | Cumulative accuracy (all 100 trials) |
+|-----|----------------------|--------------------------------------|
+| Baseline (no memory) | 0.70 | 0.47 |
+| Control_RAG (retrieval) | 0.60 | 0.46 |
+| Treatment_Eigen (retrieval + axioms) | 0.60 | **0.55** |
 
 ![Learning curve](learning_curve.png)
+
+**Read the error bands, not the lines.** Treatment_Eigen's cumulative accuracy (0.55) edges out
+RAG (0.46) and Baseline (0.47) by ~9 points — but the ±1 std bands of all three arms **overlap
+almost completely**, and on the noisier final-batch metric Baseline is *highest*. With only 2
+seeds and per-batch swings of 0.30–0.75, **the three arms are statistically indistinguishable.**
+There is a *hint* that Eigen accumulated more correct answers, but it is not a defensible win —
+and, as the next section argues, even a clean win here would be uninterpretable.
 
 ## What I had to fix before the experiment was even valid
 
@@ -45,15 +52,46 @@ surprise values*, not just the final accuracy. This is the engineering-judgment 
 
 ## The result, honestly
 
-<!-- RESULT_NARRATIVE_PLACEHOLDER:
-  Did Eigen beat RAG? By how much? Is it within seed-to-seed noise?
-  State plainly. If it's a tie or a loss, say so. -->
+No arm clearly learns the rule. Cumulative accuracy lands at ~0.47 (Baseline), ~0.46 (RAG), and
+~0.55 (Eigen) — all hovering not far above the ~0.33 three-class chance line, none climbing
+toward mastery. RAG barely improved on no-memory at all, which is itself a signal: retrieval
+added almost nothing because the retrieved neighbors are not actually informative for an
+arithmetic rule. Eigen's slight edge is within noise and rests on 2 seeds; I would not claim it
+as real without the more powered experiment in [docs/VALID_EXPERIMENT.md](docs/VALID_EXPERIMENT.md).
+
+### The agent talked itself into giving up — and that *is* the finding
+
+The single most revealing artifact of the whole project is an axiom the agent crystallized about
+its own failures:
+
+> **RULE:** The model must always output one of the specified colors (RED, BLUE, or GREEN)
+> without any interpretation or analysis of the input number. **It should simply pick one at
+> random.**
+
+Its reasoning (paraphrased from the `<thought>` block): the failure cases are the ones where the
+model *tried to reason* about the number (primes, mappings, codes); the success cases are where
+it just picked a color. So it concluded the optimal policy is to **stop reasoning and guess**.
+
+On this task that conclusion is *locally correct* — because the embedding substrate hides the
+rule, reasoning genuinely doesn't pay off, so the "overthinking" runs do worse by chance. The
+agent correctly induced that **there is no learnable signal it can act on**, and rationalized
+surrender. That is the embedding-substrate problem, narrated from inside the agent.
+
+### Axiom quality is real but uneven
+
+Across the run the kernel crystallized ~15–20 axioms per Treatment phase. Inspecting them:
+some genuinely name the rule concepts (`prime`, `divisible`, `5`); others are mostly preamble
+("Here's my analysis:") or, as above, advise guessing. So crystallization *can* surface the
+right structure, but injection is noisy and unvalidated — a wrong or defeatist axiom poisons the
+context. Validating axioms before injection is listed in next steps.
 
 ### Memory cost
 
 ![Memory cost](memory_cost.png)
 
-<!-- MEMORY_NARRATIVE_PLACEHOLDER: Eigen stores more (episodes + axioms). Quantify the overhead. -->
+Eigen stores strictly more than RAG — every episode RAG keeps, **plus** the crystallized axioms
+(~15–20 per run) and their eigenvectors. So Eigen pays a higher memory and token cost for, here,
+no reliable accuracy gain — the worst quadrant of the cost/benefit plane on this task.
 
 ## The real finding: the experiment cannot answer the question it asks
 

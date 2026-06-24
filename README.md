@@ -53,15 +53,22 @@ design itself turned out to be the real flaw: the embedding substrate is blind t
 This repo is therefore a **post-mortem of an idea**, not a victory lap — which is the point.
 Full analysis, including what a valid experiment would require, in **[FINDINGS.md](FINDINGS.md)**.
 
-<!-- RESULTS_PLACEHOLDER -->
+Cumulative accuracy over 100 trials, mean of 2 seeds: Baseline **0.47**, RAG **0.46**,
+Eigen **0.55**. Eigen edges ahead — but the ±std bands overlap almost completely, so the three
+arms are **statistically indistinguishable**. Notice in the plot how little RAG improves on
+no-memory: retrieval barely helps because the neighbors it finds aren't informative for an
+*arithmetic* rule embedded in *text* space.
 
 ![Learning curve](learning_curve.png)
 
 ![Memory cost](memory_cost.png)
 
-**A real axiom the agent wrote about itself:**
+**A real axiom the agent crystallized about its own failures** — it concluded that the winning
+move is to *stop reasoning and guess*, which is locally correct precisely because the substrate
+hides the rule:
 
-> <!-- AXIOM_PLACEHOLDER -->
+> **RULE:** The model must always output one of the specified colors (RED, BLUE, or GREEN)
+> without any interpretation or analysis of the input number. It should simply pick one at random.
 
 <details>
 <summary>Eigen-spectrum evolution (supplementary)</summary>
