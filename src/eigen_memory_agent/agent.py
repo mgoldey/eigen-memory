@@ -49,7 +49,7 @@ class AgenticMemoryLoop:
         self.thought_model = thought_model
         self.enable_retrieval = enable_retrieval
         self.enable_eigen_memory = enable_eigen_memory
-        self.kernel = EigenMemoryKernel(self.conn, self.client)
+        self.kernel = EigenMemoryKernel(self.conn, self.client, model=self.thought_model)
         self.state_hash = self._get_hash()
 
     def _get_hash(self):
@@ -62,8 +62,12 @@ class AgenticMemoryLoop:
              res = self.client.embeddings.create(input=str(text), model="embeddinggemma:latest")
              return np.array(res.data[0].embedding)
         except Exception as e:
-            # Fallback for when vLLM doesn't support embeddings on this model
-            print(f"Warning: Embedding failed ({e}), using random vector.")
+            # Fallback: a random vector keeps the run alive, but it turns retrieval
+            # into noise for this item. Count failures so a degraded run is visible
+            # rather than silently corrupting results.
+            self.embed_failures = getattr(self, "embed_failures", 0) + 1
+            print(f"Warning: Embedding failed ({e}), using random vector. "
+                  f"(total embed failures: {self.embed_failures})")
             return np.random.rand(768)
 
 

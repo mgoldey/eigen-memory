@@ -24,9 +24,10 @@ class EigenMemoryKernel:
     # 3 (not 5) so that IncrementalPCA can fit on the modest number of surprising
     # vectors a 10-trial batch typically yields; with n_components=5 the kernel
     # would often skip updates and never crystallize axioms, starving the Eigen arm.
-    def __init__(self, db_conn, openai_client, n_components=3):
+    def __init__(self, db_conn, openai_client, model="gemma3:4b", n_components=3):
         self.conn = db_conn
         self.client = openai_client
+        self.model = model
         self.n_components = n_components
         self.ipca = IncrementalPCA(n_components=n_components)
         self.fitted = False
@@ -129,7 +130,7 @@ class EigenMemoryKernel:
         
         try:
             response = self.client.chat.completions.create(
-                model="gemma3:4b", 
+                model=self.model,
                 messages=[{"role": "user", "content": prompt}]
             )
             axiom = response.choices[0].message.content
