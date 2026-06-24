@@ -21,13 +21,21 @@ register_adapter(np.int32, addapt_numpy_int32)
 register_adapter(np.ndarray, addapt_numpy_array)
 
 class EigenMemoryKernel:
-    def __init__(self, db_conn, openai_client, n_components=5):
+    # 3 (not 5) so that IncrementalPCA can fit on the modest number of surprising
+    # vectors a 10-trial batch typically yields; with n_components=5 the kernel
+    # would often skip updates and never crystallize axioms, starving the Eigen arm.
+    def __init__(self, db_conn, openai_client, n_components=3):
         self.conn = db_conn
         self.client = openai_client
+        self.n_components = n_components
         self.ipca = IncrementalPCA(n_components=n_components)
+        self.fitted = False
         self.buffer = []  # Accumulates vectors for batch updates
         self.buffer_limit = 10
         self.variance_threshold = 0.15
+        # Snapshots of explained_variance_ratio_ after each update, for the
+        # eigen-spectrum visualization.
+        self.spectrum_history = []
 
     def add_vector(self, vector):
         """Ingests a surprise vector. If buffer full, runs diagonalization."""
@@ -38,13 +46,24 @@ class EigenMemoryKernel:
 
     def add_batch(self, vectors):
         """Ingests a batch of vectors directly into PCA and checks for crystallization."""
-        if not vectors: return
-        
+        if not vectors:
+            return
+
         X = np.array(vectors)
-        # IPCA requires n_samples >= n_components? 
-        # Actually it handles it, but better to have enough samples.
+        # IncrementalPCA.partial_fit requires n_samples >= n_components. When a
+        # batch has too few surprising vectors, skip this update rather than crash
+        # (the original broad except masked this failure).
+        if X.shape[0] < self.n_components:
+            print(
+                f"[EIGEN] skip update: {X.shape[0]} surprising vectors < "
+                f"n_components={self.n_components}"
+            )
+            return
+
         self.ipca.partial_fit(X)
-        
+        self.fitted = True
+        self.spectrum_history.append(self.ipca.explained_variance_ratio_.tolist())
+
         # After update, check if we should crystallize
         self._check_and_crystallize()
 
@@ -52,9 +71,9 @@ class EigenMemoryKernel:
         """Checks principal components for crystallization (formerly _diagonalize logic)."""
         components = self.ipca.components_
         explained_variance = self.ipca.explained_variance_ratio_
-        
+
         for i, component in enumerate(components):
-            if explained_variance[i] > 0.1: # Significant component
+            if explained_variance[i] > 0.1:  # Significant component
                 self._crystallize_axiom(component)
 
     def _crystallize_axiom(self, eigen_vec):
