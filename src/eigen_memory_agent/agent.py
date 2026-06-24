@@ -9,6 +9,33 @@ try:
 except ImportError:  # allow import when run as a standalone module
     OLLAMA_BASE_URL = "http://localhost:11434/v1"
 
+# --- Surprise / memory thresholds (in nats of NLL) ---
+# Surprise assigned when the true-label token is absent from the top-k logprobs.
+# Floors a "missing" token at a high-but-finite value so it reliably counts as
+# surprising without the old bug where this case silently collapsed to a flat 2.0.
+MISSING_TOKEN_NLL = 7.0
+# An experience is written to the episodic buffer when its predictive surprise
+# (or perceptual salience) clears this bar. Tuned to the observed NLL distribution
+# of gemma3:4b on this task so that genuine mistakes are recorded.
+EPISODIC_WRITE_NLL = 1.0
+# A surprise vector feeds the Eigen kernel (and may crystallize an axiom) above
+# this bar. Set higher than the write bar so axioms form from the *most* surprising
+# events, not every recorded one.
+EIGEN_CRYSTALLIZE_NLL = 1.5
+
+
+def _extract_nll(top_logprobs, true_label):
+    """Negative log-likelihood (nats) of the true label among top-k logprobs.
+
+    Returns MISSING_TOKEN_NLL when the true-label token does not appear in the
+    top-k, rather than leaving the value undefined (the original bug).
+    """
+    for tl in top_logprobs:
+        if true_label.upper() in tl.token.upper():
+            return float(-tl.logprob)
+    return MISSING_TOKEN_NLL
+
+
 class AgenticMemoryLoop:
     def __init__(self, db_string, openai_client=None, model="gemma3:4b", thought_model="gemma3:4b", enable_retrieval=True, enable_eigen_memory=True):
         self.conn = psycopg2.connect(db_string)
@@ -117,11 +144,11 @@ class AgenticMemoryLoop:
                 
                 if res.choices[0].logprobs and res.choices[0].logprobs.content:
                     lp_content = res.choices[0].logprobs.content[0]
-                    for tl in lp_content.top_logprobs:
-                        if outcome.upper() in tl.token.upper():
-                            target_lp = tl.logprob
-                            break
-                    s_pred = -target_lp # Negative Log-Likelihood
+                    # NLL of the true label among top-k. If the true-label token is
+                    # absent from top-k, _extract_nll returns a high, finite value
+                    # (the original code left target_lp undefined here and silently
+                    # collapsed every miss to a flat 2.0 via the except path).
+                    s_pred = _extract_nll(lp_content.top_logprobs, outcome)
                 else:
                     # Fallback to Embedding Surprise if logprobs missing
                     # We need to extract the color from the CoT prediction
@@ -143,7 +170,7 @@ class AgenticMemoryLoop:
                 predictive_surprises.append(s_pred)
 
             # Store in Episodic Buffer if either Salient (Perceptual) or Surprising (Predictive)
-            if is_salient or s_pred > 1.5:
+            if is_salient or s_pred > EPISODIC_WRITE_NLL:
                 try:
                     with self.conn.cursor() as cur:
                         cur.execute("INSERT INTO episodic_buffer (context_input, prediction, actual_outcome, surprise_score, embedding) VALUES (%s, %s, %s, %s, %s)",
@@ -153,7 +180,7 @@ class AgenticMemoryLoop:
                     print(f"Logging Error: {e}")
                     self.conn.rollback()
 
-            if s_pred > 2.0: # High predictive error drives Eigen-Memory
+            if s_pred > EIGEN_CRYSTALLIZE_NLL: # High predictive error drives Eigen-Memory
                 surprising_vectors.append(q_vec)
 
         # Batch Update Kernel
@@ -181,19 +208,24 @@ class AgenticMemoryLoop:
                 for ep in episodes:
                     ctx_str += f"- Input: {ep[0]} -> Result: {ep[1]} (Surprise: {ep[2]:.2f})\n"
             
-            cur.execute("""
-                SELECT axiom_content, strength_score
-                FROM semantic_core
-                ORDER BY eigen_vector <=> %s::vector
-                LIMIT 2
-            """, (vec.tolist(),))
-            axioms = cur.fetchall()
-            
-            if axioms:
-                ctx_str += "\nRelevant Rules/Memories:\n"
-                for ax in axioms:
-                    ctx_str += f"- RULE: {ax[0]}\n"
-                    
+            # Only the Eigen arm injects crystallized axioms. Gating here keeps the
+            # Control_RAG arm a pure episodic-retrieval baseline even if axioms from
+            # a prior phase linger in the table.
+            if self.enable_eigen_memory:
+                cur.execute("""
+                    SELECT axiom_content, strength_score
+                    FROM semantic_core
+                    ORDER BY eigen_vector <=> %s::vector
+                    LIMIT 2
+                """, (vec.tolist(),))
+                axioms = cur.fetchall()
+
+                if axioms:
+                    print(f"[AXIOM→] injected {len(axioms)} axiom(s) into context")
+                    ctx_str += "\nRelevant Rules/Memories:\n"
+                    for ax in axioms:
+                        ctx_str += f"- RULE: {ax[0]}\n"
+
         return ctx_str if ctx_str else "No relevant memories found."
 
     def run(self, user_query):

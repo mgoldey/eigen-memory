@@ -122,7 +122,7 @@ class EigenMemoryKernel:
                     VALUES (%s, %s, %s)
                 """, (axiom, eigen_vec.tolist(), 1.0))
             self.conn.commit()
-            print(f"Crystallized new axiom: {axiom[:50]}...")
+            print(f"[AXIOM+] {axiom[:60].strip()}...")
             
         except Exception as e:
             print(f"Failed to crystallize axiom: {e}")

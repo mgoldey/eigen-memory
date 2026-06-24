@@ -25,3 +25,8 @@ package = true
 [tool.hatch.build.targets.wheel]
 packages = ["src/eigen_memory_agent"]
 
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
