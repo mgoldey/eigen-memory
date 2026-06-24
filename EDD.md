@@ -1,7 +1,10 @@
 # Experimental Design Document (EDD)
 **Title**: Efficacy of Iterative Diagonalization in Agentic Memory Consolidation
 **Date**: January 2026
-**Principal Investigator**: [User]
+
+> This is the **pre-registered hypothesis** (the plan, written before results). For what
+> actually happened — and a critique of whether this design could even test H1 — see
+> [FINDINGS.md](FINDINGS.md). Kept here unaltered so the original hypothesis is on record.
 
 ## 1. Abstract
 This experiment validates whether an "Eigen-Memory" system (Treatment) reduces "Surprise" (Prediction Error) faster than a standard RAG system (Control) in a sequential decision-making environment with hidden rules.
