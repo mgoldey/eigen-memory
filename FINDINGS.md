@@ -101,6 +101,10 @@ effect being hunted is plausibly smaller than seed-to-seed variance with one sma
 
 I deliberately did **not** rebuild the task — the critique itself is the result. Knowing *why*
 an experiment can't answer its question, and what the valid version looks like, is the point.
+The full design of the experiment that *could* validate this approach — a hidden semantic rule
+over short texts, a held-out test phase with frozen memory, an equal-token-budget control arm,
+and a pre-registered decision rule — is written up in
+[docs/VALID_EXPERIMENT.md](docs/VALID_EXPERIMENT.md).
 
 ## How this sits in the literature
 
