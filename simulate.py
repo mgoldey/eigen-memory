@@ -4,9 +4,10 @@ import psycopg2
 import numpy as np
 from src.eigen_memory_agent.agent import AgenticMemoryLoop
 from src.dataset import generate_dataset
+from src.config import get_db_string
 
 # Configuration
-DB_STRING = "postgresql://postgres:password@localhost:5432/memory_agent"
+DB_STRING = get_db_string()
 DATASET_SIZE = 100 # Apples to Apples: 100 trials each
 BATCH_SIZE = 10
 

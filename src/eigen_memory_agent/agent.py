@@ -4,12 +4,17 @@ from openai import OpenAI
 import psycopg2
 from .memory_kernel import EigenMemoryKernel
 
+try:
+    from src.config import OLLAMA_BASE_URL
+except ImportError:  # allow import when run as a standalone module
+    OLLAMA_BASE_URL = "http://localhost:11434/v1"
+
 class AgenticMemoryLoop:
     def __init__(self, db_string, openai_client=None, model="gemma3:4b", thought_model="gemma3:4b", enable_retrieval=True, enable_eigen_memory=True):
         self.conn = psycopg2.connect(db_string)
         # If client not provided, default to local Ollama
         if openai_client is None:
-            self.client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+            self.client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
         else:
             self.client = openai_client
             
