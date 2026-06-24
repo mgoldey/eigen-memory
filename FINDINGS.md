@@ -5,7 +5,14 @@
 
 ## TL;DR
 
-<!-- TLDR_PLACEHOLDER: one-paragraph honest summary once numbers are in -->
+I built a surprise-gated "eigen-memory" agent, made the mechanism genuinely work (fixing
+bugs that had silently turned the surprise signal into a constant), ran a controlled
+multi-seed experiment — and found that the **experiment as designed cannot demonstrate the
+hypothesis**. Eigen-memory does <!-- not / not clearly --> beat plain RAG here, but the more
+important finding is *why the task can't show a difference even in principle*: the embedding
+substrate is blind to the (arithmetic) rule, the task rewards memorization over
+generalization, and the effect is below the noise floor. The deliverable is a rigorous
+post-mortem, not a win.
 
 ## Final accuracy (mean of 2 seeds, last batch)
 
@@ -48,9 +55,14 @@ surprise values*, not just the final accuracy. This is the engineering-judgment 
 
 <!-- MEMORY_NARRATIVE_PLACEHOLDER: Eigen stores more (episodes + axioms). Quantify the overhead. -->
 
-## Why this is a hard task for *any* memory scheme: the embedding-substrate problem
+## The real finding: the experiment cannot answer the question it asks
 
-The deepest finding is about the **representation**, not the memory architecture.
+The most valuable result of this project is a **critique of its own experimental design**.
+After making the mechanism actually work, I asked the harder question — *can this task even
+demonstrate the hypothesis?* — and the answer is no. Three design flaws each independently
+undermine the test:
+
+### 1. The embedding substrate cannot represent the rule
 
 The hidden rule is *arithmetic*: `prime → RED`, `÷5 → BLUE`, `else → GREEN`. But the agent
 embeds a bare integer (e.g. `47`) with a **text** embedding model, then retrieves by cosine
@@ -59,13 +71,36 @@ by primality or divisibility — `47` and `53` (both prime) are not necessarily 
 `48` (RED vs GREEN) may be closer.
 
 So the retrieval substrate **cannot express the rule**. Neither RAG nor Eigen-memory can exploit
-similarity that doesn't encode the relevant property. This is very likely the dominant reason
-sophisticated memory does not pull away from the baseline here — the bottleneck is upstream of
-the memory architecture entirely.
+similarity that doesn't encode the relevant property. A null result is therefore uninterpretable:
+it can't distinguish "eigen-memory is bad" from "the representation is blind to the rule."
 
-This reframes the whole result: it's less "PCA-based memory doesn't help" and more "you cannot
-retrieve your way to a rule your representation can't see." A fairer test of eigen-memory would
-use a task whose similarity structure lives in embedding space (e.g. semantic/textual rules).
+### 2. The task rewards memorization, not generalization — which structurally favors RAG
+
+Inputs are integers 1–100 with a fixed rule, run for 100 trials. By the end the agent has seen
+**most of the input space**. Plain episodic RAG only needs to have stored the *exact* number
+before — it never needs a rule. But the entire point of crystallizing an axiom ("primes are RED")
+is to **generalize to unseen inputs**, and this task has almost none. The design gives the
+rule-compression mechanism nothing to win with, and hands the win to lookup.
+
+A valid test requires a **train/test split**: induce the rule on some inputs, then evaluate on
+**held-out** inputs the agent has never stored. That is the only setting where "compress into a
+generalizable rule" can beat "look up the nearest past episode."
+
+### 3. The effect size is below the noise floor
+
+A single 100-trial run is very noisy — batch accuracy swings from 20% to 90%, and two separate
+"before" runs disagreed (Eigen 0.5 vs 0.9 final). Averaging seeds (done here) helps, but the
+effect being hunted is plausibly smaller than seed-to-seed variance with one small 4B model.
+
+### What a valid experiment would require
+
+- A task whose similarity structure lives in **embedding space** (e.g. a hidden *semantic* rule
+  over short texts), so retrieval can actually see the signal.
+- A **train/test split** so generalization — not memorization — is what's measured.
+- Enough seeds (and ideally a paired significance test) to clear the noise floor.
+
+I deliberately did **not** rebuild the task — the critique itself is the result. Knowing *why*
+an experiment can't answer its question, and what the valid version looks like, is the point.
 
 ## How this sits in the literature
 

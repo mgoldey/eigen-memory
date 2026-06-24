@@ -41,10 +41,19 @@ Three arms, each run over multiple seeds and averaged:
 | **Control_RAG** | on | off | Plain retrieval of top-k similar past episodes. |
 | **Treatment_Eigen** | on | on | RAG **plus** crystallized eigen-axioms. |
 
-### Result
+### Result — a rigorous negative result
+
+The honest headline: **eigen-memory does not clearly beat plain RAG on this task** — and the
+more interesting finding is *why the task can't show a difference even in principle*. Getting
+the mechanism to genuinely work meant fixing bugs that had quietly turned the "surprise" signal
+into a **constant**, so the original experiment was measuring nothing. Once it worked, the task
+design itself turned out to be the real flaw: the embedding substrate is blind to the
+(arithmetic) rule, and the task rewards memorization over generalization.
+
+This repo is therefore a **post-mortem of an idea**, not a victory lap — which is the point.
+Full analysis, including what a valid experiment would require, in **[FINDINGS.md](FINDINGS.md)**.
 
 <!-- RESULTS_PLACEHOLDER -->
-*(Filled in from the multi-seed run — see `FINDINGS.md` for the honest write-up.)*
 
 ![Learning curve](learning_curve.png)
 
