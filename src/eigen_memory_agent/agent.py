@@ -36,6 +36,25 @@ def _extract_nll(top_logprobs, true_label):
     return MISSING_TOKEN_NLL
 
 
+# System prompt for the predictive-surprise probe. gemma3:4b is a CHAT model: a
+# completion-style prompt ("...the label:") makes it reply with prose ("The...",
+# "In...") so the label token is never first and NLL collapses to MISSING_TOKEN_NLL
+# for every item. Constraining it to emit exactly one label word puts the label as
+# the first token, so its logprob is a real, varied prediction-error signal.
+_SURPRISE_SYSTEM_PROMPT = (
+    "You are playing a classification game. Reply with EXACTLY one word, "
+    "one of: RED, BLUE, GREEN. No other text."
+)
+
+
+def _surprise_messages(query):
+    """Messages for the predictive-surprise probe (label must be the first token)."""
+    return [
+        {"role": "system", "content": _SURPRISE_SYSTEM_PROMPT},
+        {"role": "user", "content": f"Input: {query}\nLabel:"},
+    ]
+
+
 class AgenticMemoryLoop:
     def __init__(self, db_string, openai_client=None, model="gemma3:4b", thought_model="gemma3:4b", enable_retrieval=True, enable_eigen_memory=True):
         self.conn = psycopg2.connect(db_string)
@@ -132,15 +151,14 @@ class AgenticMemoryLoop:
         surprising_vectors = []
         
         for i, (query, pred, outcome, q_vec, is_salient) in enumerate(zip(inputs, raw_predictions, true_labels, embeddings, salience_flags)):
-            # Predictive Surprise: How likely was the TRUE label?
-            # We do a mock completion to see the logprob of the correct label
-            # "Input: {query} -> Result: "
-            check_prompt = f"In the pattern game, the input {query} correctly results in the label:"
-            
+            # Predictive Surprise: How likely was the TRUE label? We probe the model
+            # for a one-token label answer and read the logprob of the true label.
+            # The constrained prompt forces the label to be the first token (see
+            # _surprise_messages); a completion-style prompt fails on chat models.
             try:
                 res = self.client.chat.completions.create(
                     model=self.model,
-                    messages=[{"role": "user", "content": check_prompt}],
+                    messages=_surprise_messages(query),
                     logprobs=True,
                     top_logprobs=10,
                     max_tokens=1
