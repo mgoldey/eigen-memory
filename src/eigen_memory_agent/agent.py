@@ -1,0 +1,196 @@
+import hashlib
+import numpy as np
+from openai import OpenAI
+import psycopg2
+from .memory_kernel import EigenMemoryKernel
+
+class AgenticMemoryLoop:
+    def __init__(self, db_string, openai_client=None, model="gemma3:4b", thought_model="gemma3:4b", enable_retrieval=True, enable_eigen_memory=True):
+        self.conn = psycopg2.connect(db_string)
+        # If client not provided, default to local Ollama
+        if openai_client is None:
+            self.client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+        else:
+            self.client = openai_client
+            
+        self.model = model
+        self.thought_model = thought_model
+        self.enable_retrieval = enable_retrieval
+        self.enable_eigen_memory = enable_eigen_memory
+        self.kernel = EigenMemoryKernel(self.conn, self.client)
+        self.state_hash = self._get_hash()
+
+    def _get_hash(self):
+        return hashlib.sha256(f"{self.model}".encode()).hexdigest()
+
+    def _embed(self, text):
+        # Use a dedicated embedding model via Ollama
+        try:
+             # We use 'embeddinggemma:latest' as requested
+             res = self.client.embeddings.create(input=str(text), model="embeddinggemma:latest")
+             return np.array(res.data[0].embedding)
+        except Exception as e:
+            # Fallback for when vLLM doesn't support embeddings on this model
+            print(f"Warning: Embedding failed ({e}), using random vector.")
+            return np.random.rand(768)
+
+
+    def run_batch(self, inputs):
+        """Runs a batch of inputs with Perceptual Surprise (Entropy) and CoT."""
+        predictions = []
+        embeddings = []
+        salience_flags = []
+        perceptual_surprises = []
+        
+        for x in inputs:
+            q_vec = self._embed(x)
+            embeddings.append(q_vec)
+            context = self._retrieve_context(q_vec)
+            
+            # 2. Predict with CoT and Logprobs
+            prompt = f"""You are playing a pattern recognition game. 
+            Valid outputs are only: RED, BLUE, GREEN.
+            
+            {context}
+            
+            Task: Analyze the input and rules inside <thought> blocks. 
+            Your final line must be exactly one of: RED, BLUE, or GREEN.
+            
+            Input: {x}
+            Output:"""
+            
+            try:
+                pred_resp = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    logprobs=True,
+                    top_logprobs=5 # To see distribution across labels
+                )
+                raw = pred_resp.choices[0].message.content
+                predictions.append(raw)
+                
+                # Calculate Perceptual Surprise (Entropy of the first token)
+                if pred_resp.choices[0].logprobs and pred_resp.choices[0].logprobs.content:
+                    logprobs_info = pred_resp.choices[0].logprobs.content
+                    top = logprobs_info[0].top_logprobs
+                    probs = [np.exp(tl.logprob) for tl in top]
+                    entropy = -np.sum([p * np.log(p + 1e-10) for p in probs])
+                    perceptual_surprises.append(entropy)
+                    salience_flags.append(entropy > 0.8)
+                else:
+                    print(f"Warning: No logprobs in prediction response. logprobs={pred_resp.choices[0].logprobs}")
+                    perceptual_surprises.append(0.0)
+                    salience_flags.append(False)
+
+            except Exception as e:
+                print(f"Prediction Error: {e}")
+                predictions.append("ERROR")
+                perceptual_surprises.append(0.0)
+                salience_flags.append(False)
+                
+        return predictions, embeddings, salience_flags, perceptual_surprises
+
+    def learn_batch(self, inputs, raw_predictions, true_labels, embeddings, salience_flags):
+        """Calculates Predictive Surprise (NLL) and updates kernel."""
+        predictive_surprises = []
+        surprising_vectors = []
+        
+        for i, (query, pred, outcome, q_vec, is_salient) in enumerate(zip(inputs, raw_predictions, true_labels, embeddings, salience_flags)):
+            # Predictive Surprise: How likely was the TRUE label?
+            # We do a mock completion to see the logprob of the correct label
+            # "Input: {query} -> Result: "
+            check_prompt = f"In the pattern game, the input {query} correctly results in the label:"
+            
+            try:
+                res = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": check_prompt}],
+                    logprobs=True,
+                    top_logprobs=10,
+                    max_tokens=1
+                )
+                
+                if res.choices[0].logprobs and res.choices[0].logprobs.content:
+                    lp_content = res.choices[0].logprobs.content[0]
+                    for tl in lp_content.top_logprobs:
+                        if outcome.upper() in tl.token.upper():
+                            target_lp = tl.logprob
+                            break
+                    s_pred = -target_lp # Negative Log-Likelihood
+                else:
+                    # Fallback to Embedding Surprise if logprobs missing
+                    # We need to extract the color from the CoT prediction
+                    lines = [l.strip() for l in pred.strip().split("\n") if l.strip()]
+                    pred_color = lines[-1].upper().replace(".", "").replace("'","").replace('"',"") if lines else "ERROR"
+                    
+                    v_pred = self._embed(pred_color)
+                    v_out = self._embed(outcome)
+                    s_pred = 1 - np.dot(v_pred, v_out)
+                    # Scale s_pred to bit-like range (0.5 cos -> roughly 1.0-2.0 bits)
+                    # Just keep it raw for now but ensure it triggers learning
+                    s_pred = s_pred * 5.0 
+                
+                predictive_surprises.append(s_pred)
+                
+            except Exception as e:
+                print(f"Surprise Eval Error: {e}")
+                s_pred = 2.0 # Manual high surprise fallback
+                predictive_surprises.append(s_pred)
+
+            # Store in Episodic Buffer if either Salient (Perceptual) or Surprising (Predictive)
+            if is_salient or s_pred > 1.5:
+                try:
+                    with self.conn.cursor() as cur:
+                        cur.execute("INSERT INTO episodic_buffer (context_input, prediction, actual_outcome, surprise_score, embedding) VALUES (%s, %s, %s, %s, %s)",
+                        (query, pred, outcome, float(s_pred), q_vec.tolist()))
+                    self.conn.commit()
+                except Exception as e:
+                    print(f"Logging Error: {e}")
+                    self.conn.rollback()
+
+            if s_pred > 2.0: # High predictive error drives Eigen-Memory
+                surprising_vectors.append(q_vec)
+
+        # Batch Update Kernel
+        if self.enable_eigen_memory and surprising_vectors:
+             self.kernel.add_batch(surprising_vectors)
+        
+        print(f"Batch Predictive Surprise (Avg NLL): {np.mean(predictive_surprises):.2f}")
+
+    def _retrieve_context(self, vec):
+        if not self.enable_retrieval:
+            return ""
+
+        ctx_str = ""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT context_input, actual_outcome, surprise_score
+                FROM episodic_buffer
+                ORDER BY embedding <=> %s::vector
+                LIMIT 3
+            """, (vec.tolist(),))
+            episodes = cur.fetchall()
+            
+            if episodes:
+                ctx_str += "Similar Past Events:\n"
+                for ep in episodes:
+                    ctx_str += f"- Input: {ep[0]} -> Result: {ep[1]} (Surprise: {ep[2]:.2f})\n"
+            
+            cur.execute("""
+                SELECT axiom_content, strength_score
+                FROM semantic_core
+                ORDER BY eigen_vector <=> %s::vector
+                LIMIT 2
+            """, (vec.tolist(),))
+            axioms = cur.fetchall()
+            
+            if axioms:
+                ctx_str += "\nRelevant Rules/Memories:\n"
+                for ax in axioms:
+                    ctx_str += f"- RULE: {ax[0]}\n"
+                    
+        return ctx_str if ctx_str else "No relevant memories found."
+
+    def run(self, user_query):
+        # Implementation of single-run legacy-compat if needed
+        return self.run_batch([user_query])[0][0]
