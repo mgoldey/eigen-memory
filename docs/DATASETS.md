@@ -93,4 +93,27 @@ and the agent loop, surprise gating, and PCA kernel work unchanged. The crucial 
 the number-game: **evaluate on the held-out test split with memory frozen** (see
 [VALID_EXPERIMENT.md](VALID_EXPERIMENT.md)), so generalization — not memorization — is measured.
 
-<!-- RESEARCH_APPENDIX: enriched from the dataset deep-research run when it completes -->
+## Appendix: verified survey (deep-research, 3-0 adversarial votes)
+
+A multi-source search corroborated the picks above and added licensing detail. Key findings,
+each adversarially verified:
+
+| Dataset | HF id | Classes | Length | Split | License note |
+|---------|-------|--------:|--------|-------|--------------|
+| **AG News** | `fancyzhx/ag_news` | 4 (World/Sports/Business/Sci-Tech) | headline+blurb, short | 120k / 7.6k | **Permissive — best "clean license" pick** |
+| **TREC (coarse)** | `CogComp/trec` | 6 (used here) | ~10 words | 5,452 / 500 | ⚠️ **license listed "unknown"** — fine for personal research, verify before redistribution |
+| TweetEval emotion | `cardiffnlp/tweet_eval` (`emotion`) | 4 | tweet | 3,257 / 1,421 | ⚠️ Twitter ToS / "Undefined" |
+| TweetEval sentiment | `cardiffnlp/tweet_eval` (`sentiment`) | 3 | tweet | large | ⚠️ Twitter ToS |
+| SST-2 | `stanfordnlp/sst2` | 2 | one sentence | train+val | ⚠️ official test labels masked (`-1`); use val as held-out |
+| SNIPS | (Few-Shot-Intent repo) | 7 | one utterance | 13k / 700 / 700 | no single canonical HF id |
+| CLINC150 | `clinc/clinc_oos` | 150 (+oos) | one sentence | 15k / 3k / 4.5k | too many classes for 2–10 target |
+| Banking77 | `banking77` | 77 | one sentence | — | too many classes |
+
+**Licensing takeaway:** TREC is the easiest to load and the best substrate fit, and is fine for
+a personal research demo, but its license is unconfirmed. If this repo is ever published or
+redistributed, **AG News is the safer choice** (permissive, 4 clean classes, also short text) —
+swap `TASK=trec` logic for an `ag_news` loader using the same `load_dataset` dispatcher pattern.
+
+**Conceptual note:** the closest academic framing of "induce a rule from examples" is the
+Instruction Induction benchmark (arXiv:2205.10782), but it is a generative NL-instruction task,
+not a fixed-label classification dataset — not a drop-in here.
