@@ -1,15 +1,20 @@
 import json
+import os
 import time
 import psycopg2
 import numpy as np
 from src.eigen_memory_agent.agent import AgenticMemoryLoop
-from src.dataset import generate_dataset
+from src.dataset import load_dataset, get_labels
 from src.config import get_db_string
 
 # Configuration
 DB_STRING = get_db_string()
 DATASET_SIZE = 100 # Apples to Apples: 100 trials each
 BATCH_SIZE = 10
+# Which task to run: "number" (default, the arithmetic number-game) or "trec"
+# (short-text question classification — rule is visible in embedding space).
+TASK = os.getenv("TASK", "number")
+LABELS = get_labels(TASK)
 
 def get_row_count(conn):
     with conn.cursor() as cur:
@@ -32,10 +37,11 @@ def run_phase(phase_name, config, seed=42):
         model="gemma3:4b",
         thought_model="gemma3:4b",
         enable_retrieval=config["enable_retrieval"],
-        enable_eigen_memory=config["enable_eigen_memory"]
+        enable_eigen_memory=config["enable_eigen_memory"],
+        labels=LABELS,
     )
 
-    dataset = generate_dataset(num_samples=DATASET_SIZE, seed=seed)
+    dataset = load_dataset(task=TASK, split="train", num_samples=DATASET_SIZE, seed=seed)
     phase_data = {
         "batch_indices": [],
         "accuracies": [],
@@ -64,13 +70,13 @@ def run_phase(phase_name, config, seed=42):
         batch_correct = 0
         clean_preds = []
         for raw in raw_predictions:
-            # Extract last line for the color
+            # Take the last non-empty line as the answer; if it isn't a valid
+            # label, scan the whole response for any valid label as a fallback.
             lines = [l.strip() for l in raw.strip().split("\n") if l.strip()]
-            p = lines[-1].upper().replace(".", "").replace("'","").replace('"',"") if lines else "ERROR"
-            if p not in ["RED", "BLUE", "GREEN"]:
-                if "RED" in raw.upper(): p = "RED"
-                elif "BLUE" in raw.upper(): p = "BLUE"
-                elif "GREEN" in raw.upper(): p = "GREEN"
+            p = lines[-1].upper().replace(".", "").replace("'", "").replace('"', "") if lines else "ERROR"
+            if p not in LABELS:
+                up = raw.upper()
+                p = next((lab for lab in LABELS if lab in up), p)
             clean_preds.append(p)
             
         for p, t in zip(clean_preds, true_labels):

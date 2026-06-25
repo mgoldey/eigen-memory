@@ -45,23 +45,30 @@ def _extract_nll(top_logprobs, true_label):
 # "In...") so the label token is never first and NLL collapses to MISSING_TOKEN_NLL
 # for every item. Constraining it to emit exactly one label word puts the label as
 # the first token, so its logprob is a real, varied prediction-error signal.
-_SURPRISE_SYSTEM_PROMPT = (
-    "You are playing a classification game. Reply with EXACTLY one word, "
-    "one of: RED, BLUE, GREEN. No other text."
-)
+DEFAULT_LABELS = ["RED", "BLUE", "GREEN"]
 
 
-def _surprise_messages(query):
+def _surprise_messages(query, labels=DEFAULT_LABELS):
     """Messages for the predictive-surprise probe (label must be the first token)."""
+    label_str = ", ".join(labels)
     return [
-        {"role": "system", "content": _SURPRISE_SYSTEM_PROMPT},
+        {
+            "role": "system",
+            "content": (
+                "You are playing a classification game. Reply with EXACTLY one "
+                f"word, one of: {label_str}. No other text."
+            ),
+        },
         {"role": "user", "content": f"Input: {query}\nLabel:"},
     ]
 
 
 class AgenticMemoryLoop:
-    def __init__(self, db_string, openai_client=None, model="gemma3:4b", thought_model="gemma3:4b", enable_retrieval=True, enable_eigen_memory=True):
+    def __init__(self, db_string, openai_client=None, model="gemma3:4b", thought_model="gemma3:4b", enable_retrieval=True, enable_eigen_memory=True, labels=None):
         self.conn = psycopg2.connect(db_string)
+        # Valid label set for this task (RED/BLUE/GREEN by default; e.g.
+        # HUM/LOC/NUM for TREC). Used in both the prediction and surprise prompts.
+        self.labels = labels or DEFAULT_LABELS
         # If client not provided, default to local Ollama
         if openai_client is None:
             self.client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
@@ -107,14 +114,15 @@ class AgenticMemoryLoop:
             context = self._retrieve_context(q_vec)
             
             # 2. Predict with CoT and Logprobs
-            prompt = f"""You are playing a pattern recognition game. 
-            Valid outputs are only: RED, BLUE, GREEN.
-            
+            label_str = ", ".join(self.labels)
+            prompt = f"""You are playing a pattern recognition game.
+            Valid outputs are only: {label_str}.
+
             {context}
-            
-            Task: Analyze the input and rules inside <thought> blocks. 
-            Your final line must be exactly one of: RED, BLUE, or GREEN.
-            
+
+            Task: Analyze the input and rules inside <thought> blocks.
+            Your final line must be exactly one of: {label_str}.
+
             Input: {x}
             Output:"""
             
@@ -166,7 +174,7 @@ class AgenticMemoryLoop:
             try:
                 res = self.client.chat.completions.create(
                     model=self.model,
-                    messages=_surprise_messages(query),
+                    messages=_surprise_messages(query, self.labels),
                     logprobs=True,
                     top_logprobs=10,
                     max_tokens=1
