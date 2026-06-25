@@ -117,6 +117,14 @@ Tests: `uv run pytest`.
 - Harder environments (compositional rules, distribution shift) where memory should matter more.
 - Validate axiom *quality* before injection — a wrong self-written rule can poison the context.
 
+## Going deeper
+
+- **[FINDINGS.md](FINDINGS.md)** — the honest result and why the task can't show a difference.
+- **[docs/USE_CASES.md](docs/USE_CASES.md)** — where eigen-memory *would* win: the four winning
+  conditions, a scorecard, and deep dives on coding self-correction and user-preference learning.
+- **[docs/VALID_EXPERIMENT.md](docs/VALID_EXPERIMENT.md)** — the experiment that could decisively test it.
+- **[docs/PRIOR_ART.md](docs/PRIOR_ART.md)** — how this sits in the literature.
+
 ## Repository layout
 
 ```
