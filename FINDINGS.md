@@ -6,13 +6,21 @@
 ## TL;DR
 
 I built a surprise-gated "eigen-memory" agent, made the mechanism genuinely work (fixing
-bugs that had silently turned the surprise signal into a constant), ran a controlled
-multi-seed experiment — and found that the **three arms are statistically indistinguishable**.
-Eigen-memory shows a faint hint of higher cumulative accuracy (0.55 vs ~0.46), but the error
-bands overlap completely, so it is not a defensible win. The more important finding is *why the
-task can't show a difference even in principle*: the embedding substrate is blind to the
-(arithmetic) rule, the task rewards memorization over generalization, and the effect is below
-the noise floor. The deliverable is a rigorous post-mortem, not a win.
+bugs that had silently turned the surprise signal into a constant), and ran a controlled
+multi-seed experiment on **two different substrates**:
+
+1. **Number-game** (arithmetic rule, *invisible* to text embeddings): the three arms are
+   **statistically indistinguishable**. RAG barely beats no-memory at all, because the retrieval
+   substrate is blind to an arithmetic rule.
+2. **TREC** (question-type rule, *visible* to text embeddings): now **RAG clearly beats
+   Baseline (80% vs 75%)** — proving the rig can detect a real memory benefit — but **eigen-memory
+   does not beat plain RAG (75% vs 80%)**; the crystallized axioms add nothing over raw exemplars.
+
+Across both substrates, **eigen-memory never beats plain RAG.** The two failures fail *differently*,
+and that's the finding: on the number-game the substrate hides the rule; on TREC the baseline is
+already high (a ceiling effect) and a single retrieved example settles each question, so there is
+nothing for rule-compression to win with. The deliverable is a rigorous two-substrate post-mortem
+that isolates *why* the idea doesn't win — not a victory lap.
 
 ## Results (mean of 2 seeds, 100 trials each)
 
@@ -93,6 +101,70 @@ Eigen stores strictly more than RAG — every episode RAG keeps, **plus** the cr
 (~15–20 per run) and their eigenvectors. So Eigen pays a higher memory and token cost for, here,
 no reliable accuracy gain — the worst quadrant of the cost/benefit plane on this task.
 
+## The follow-up: TREC, a substrate that *can* see the rule
+
+The number-game's central flaw (below) is that the embedding substrate is blind to an arithmetic
+rule. The obvious test of that diagnosis: run the **same agent, unchanged**, on a task where the
+hidden rule *is* a semantic property that text embeddings represent — and see whether retrieval
+suddenly starts helping. If RAG beats Baseline on such a task, the rig is sound and the
+number-game's null was a substrate problem, not a bug.
+
+I wired in **TREC question classification** (behind `TASK=trec`; see
+[docs/DATASETS.md](docs/DATASETS.md)): short questions, a genuine hidden rule (the *type* of answer
+a question asks for), classified into a 3-class subset `{HUM, LOC, NUM}`. Same agent loop, same
+surprise gating, same PCA kernel — only `src/dataset.py` changed.
+
+### TREC results (mean of 2 seeds, 100 trials each)
+
+| Arm | Final-batch accuracy |
+|-----|----------------------|
+| Baseline (no memory) | 0.75 |
+| Control_RAG (retrieval) | **0.80** |
+| Treatment_Eigen (retrieval + axioms) | 0.75 |
+
+(Raw TREC numbers: `comparison_results.trec.json`. The number-game's are in
+`comparison_results.json`, which the committed plots are rendered from.)
+
+**Mechanism health:** clean run — **0 embedding failures**, surprise NLL genuinely varied
+(batch averages 0.89 → 2.20), and the eigen layer fired for real (**19 axioms crystallized,
+170 axiom-injections** into context). The eigen layer was not a silent no-op; it was working and
+*still* didn't help.
+
+Two things this shows, both more informative than the number-game null:
+
+1. **The rig is sound — RAG beats Baseline when the rule is visible.** Unlike the number-game
+   (where RAG 0.46 ≈ Baseline 0.47), on TREC **RAG clearly beats no-memory** at nearly every batch
+   (final 0.80 vs 0.75; at batch 40, 0.95 vs 0.65). This directly confirms condition **C1** from
+   [docs/USE_CASES.md](docs/USE_CASES.md): when the rule lives in embedding space, retrieving similar
+   past episodes genuinely helps. The experimental apparatus *can* detect a memory benefit.
+
+2. **Eigen still doesn't beat RAG — and here we can see why.** Despite 170 axiom-injections, the
+   Treatment arm tracks Baseline (0.75), *below* plain RAG (0.80). Two compounding reasons:
+   - **Ceiling effect.** Baseline is already 0.75 zero-shot — a 4B model can largely classify TREC
+     question-types unaided. That leaves only ~25 points of headroom, and the seed variance (±0.15)
+     is wide enough to swallow the RAG→Eigen gap.
+   - **Axioms are noisier than exemplars (C3 fails).** TREC is *single-exemplar-solvable*: one
+     retrieved "Where is X? → LOC" example already settles a question. An abstract self-written
+     rule is weaker context for a 4B model than a concrete neighbor, so crystallization adds cost
+     without adding signal. The axiom-over-exemplar bet only pays off when one example is *not*
+     enough — compositional rules, many-shot tasks — which TREC is not.
+
+### Two substrates, one conclusion
+
+| | Number-game | TREC |
+|---|---|---|
+| Rule visible in embeddings (**C1**)? | ✗ | ✓ |
+| Does RAG beat Baseline? | No (0.46 vs 0.47) | **Yes (0.80 vs 0.75)** |
+| Does Eigen beat RAG? | No | No (0.75 vs 0.80) |
+| Why the effect can't show | substrate blind to rule | ceiling + single-exemplar-solvable (**C3** fails) |
+
+Eigen-memory beat plain RAG on **neither** substrate — but the two tasks fail different winning
+conditions (`USE_CASES.md` C1–C4), and neither satisfies all four. The TREC arm is the cleaner
+result: it rules out "the rig can't detect any memory effect" (RAG *does* win there), leaving the
+specific conclusion that **crystallizing failures into axioms doesn't beat retrieving raw exemplars
+unless a single exemplar is insufficient.** That is a precise, defensible negative — and it points
+exactly at where the idea *would* have to be tested to win (see next section).
+
 ## The real finding: the experiment cannot answer the question it asks
 
 The most valuable result of this project is a **critique of its own experimental design**.
@@ -160,9 +232,18 @@ baseline — consistent with what I see here.
 
 ## What I'd do next
 
-- **Fix the substrate**: a task where embedding similarity actually encodes the rule, or embed
-  engineered numeric features instead of raw text.
-- **More seeds + a paired significance test** for a statistically powered claim.
-- **Validate axiom quality before injection** — a wrong self-written rule poisons the context;
-  measure how often crystallized axioms are actually correct.
+The TREC arm moved the bottleneck: the substrate is no longer the problem (RAG works there), so
+the open question is whether eigen-axioms can beat exemplars on a task where **one exemplar isn't
+enough** (condition C3). That's where I'd go next:
+
+- **Pick a task that fails for RAG, not for the substrate**: a *compositional* rule over short
+  texts (so generalizing the rule beats looking up the nearest neighbor) with a low enough zero-shot
+  baseline to leave headroom — i.e. one where C1 holds **and** C3 holds. TREC satisfied C1 but not C3.
+- **Held-out test split with memory frozen** — measure generalization, not memorization (the design
+  in [docs/VALID_EXPERIMENT.md](docs/VALID_EXPERIMENT.md)).
+- **More seeds + a paired significance test** for a statistically powered claim (current ±0.15 seed
+  variance swamps the RAG→Eigen gap).
+- **Validate axiom quality before injection** — TREC showed axioms firing 170× without helping; a
+  weak or off-topic axiom is worse context than a concrete neighbor. Measure correctness before
+  injecting, and consider injecting axioms *only* when no good exemplar exists.
 - **Ablate the two surprise signals** (entropy vs NLL) to see which, if either, is load-bearing.

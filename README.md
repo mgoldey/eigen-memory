@@ -41,23 +41,35 @@ Three arms, each run over multiple seeds and averaged:
 | **Control_RAG** | on | off | Plain retrieval of top-k similar past episodes. |
 | **Treatment_Eigen** | on | on | RAG **plus** crystallized eigen-axioms. |
 
-### Result — a rigorous negative result
+### Result — a rigorous two-substrate negative result
 
-The honest headline: **eigen-memory does not clearly beat plain RAG on this task** — and the
-more interesting finding is *why the task can't show a difference even in principle*. Getting
-the mechanism to genuinely work meant fixing bugs that had quietly turned the "surprise" signal
-into a **constant**, so the original experiment was measuring nothing. Once it worked, the task
-design itself turned out to be the real flaw: the embedding substrate is blind to the
-(arithmetic) rule, and the task rewards memorization over generalization.
+The honest headline: **eigen-memory never beats plain RAG** — tested on *two* substrates — and the
+more interesting finding is *why*, which differs between them. Getting the mechanism to genuinely
+work first meant fixing bugs that had quietly turned the "surprise" signal into a **constant**, so
+the original experiment was measuring nothing. Once it worked, I ran two tasks:
 
-This repo is therefore a **post-mortem of an idea**, not a victory lap — which is the point.
-Full analysis, including what a valid experiment would require, in **[FINDINGS.md](FINDINGS.md)**.
+| | Number-game (arithmetic rule) | TREC (question-type rule) |
+|---|---|---|
+| Rule visible to text embeddings? | ✗ | ✓ |
+| **Does RAG beat no-memory?** | No — 0.46 vs 0.47 | **Yes — 0.80 vs 0.75** |
+| **Does Eigen beat RAG?** | No | No — 0.75 vs 0.80 |
+| Why the effect can't show | substrate blind to the rule | ceiling effect; one exemplar already settles each question |
 
-Cumulative accuracy over 100 trials, mean of 2 seeds: Baseline **0.47**, RAG **0.46**,
-Eigen **0.55**. Eigen edges ahead — but the ±std bands overlap almost completely, so the three
-arms are **statistically indistinguishable**. Notice in the plot how little RAG improves on
-no-memory: retrieval barely helps because the neighbors it finds aren't informative for an
-*arithmetic* rule embedded in *text* space.
+The **TREC arm is the key result**: when the rule *is* visible in embedding space, plain RAG
+clearly beats no-memory — which proves the experimental rig can detect a real memory benefit.
+Eigen-memory still doesn't beat it, because TREC is solvable from a single retrieved exemplar, so
+there is nothing for rule-compression to add. The number-game fails earlier still: text embeddings
+of bare integers don't cluster by primality, so retrieval is blind to the rule and even RAG can't
+help.
+
+This repo is therefore a **post-mortem of an idea**, not a victory lap — which is the point. It
+isolates the precise condition eigen-memory would need to win (a rule that's embedding-visible
+*and* not solvable from one exemplar) and shows neither task meets it. Full analysis in
+**[FINDINGS.md](FINDINGS.md)**.
+
+The number-game learning curve below shows how little RAG improves on no-memory there — retrieval
+barely helps because the neighbors it finds aren't informative for an *arithmetic* rule embedded in
+*text* space:
 
 ![Learning curve](learning_curve.png)
 
@@ -101,11 +113,16 @@ docker exec -i memory-db psql -U postgres -d memory_agent < schema.sql
 uv sync
 
 # 5. Run the experiment (multi-seed; takes a while on CPU)
-uv run python simulate.py
+uv run python simulate.py              # number-game (default)
+TASK=trec uv run python simulate.py    # TREC question classification (rule visible in embeddings)
 
 # 6. Generate the plots
 uv run python plot_results.py
 ```
+
+`TASK=trec` runs the *same agent* on a substrate where the hidden rule is embedding-visible — the
+re-test that shows RAG beating no-memory (see [FINDINGS.md](FINDINGS.md)). It auto-downloads and
+caches the TREC dataset on first run.
 
 Tests: `uv run pytest`.
 
@@ -132,7 +149,7 @@ simulate.py                     # the experiment: 3 arms x N seeds
 plot_results.py                 # learning curve, memory cost, eigen-spectrum
 schema.sql                      # episodic_buffer + semantic_core (pgvector)
 src/config.py                   # env-driven DB / Ollama config
-src/dataset.py                  # the hidden-rules game
+src/dataset.py                  # the hidden-rules game (number) + TREC loader (TASK=trec)
 src/eigen_memory_agent/
   agent.py                      # the agent loop: predict, measure surprise, learn
   memory_kernel.py              # incremental PCA -> axiom crystallization
