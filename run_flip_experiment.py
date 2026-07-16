@@ -14,8 +14,10 @@ Arms:
   Control_RAG   — episodic retrieval; trained.
   Treatment_Eigen — retrieval + corrected kernel (residual cPCA, gated); trained.
 
-Outputs comparison_results.flip.json with per-arm train curves, held-out accuracy,
-per-polarity breakdown (the H2 per-cell signal), and the eigen telemetry.
+Outputs comparison_results.flip.<seed>.json with per-arm train curves, held-out
+accuracy, per-polarity breakdown (the H2 per-cell signal), the eigen telemetry,
+and per-arm health counters (buffer size, missing-NLL rate, parse-fallback rate)
+so a silently degraded signal is loud in the artifact, not just in the console.
 
 Usage: uv run python run_flip_experiment.py [seed]
 """
@@ -28,7 +30,7 @@ import psycopg2
 
 from src.config import get_db_string
 from src.dataset import flip_oracle_text, get_labels, load_dataset
-from src.eigen_memory_agent.agent import AgenticMemoryLoop, clean_prediction
+from src.eigen_memory_agent.agent import AgenticMemoryLoop, parse_prediction
 
 SEED = int(sys.argv[1]) if len(sys.argv) > 1 else 42
 N_TRAIN = 100
@@ -43,7 +45,7 @@ def reset_db(conn):
     conn.commit()
 
 
-def run_phase(agent, data, learn):
+def run_phase(agent, data, learn, fallback_counter):
     """One pass over data. learn=False -> frozen memory: predict only."""
     accs = []
     for b in range(0, len(data), BATCH):
@@ -53,7 +55,10 @@ def run_phase(agent, data, learn):
         preds, embs, sal, _, ctxs, resids = agent.run_batch(inputs)
         if learn:
             agent.learn_batch(inputs, preds, truths, embs, sal, ctxs, resids)
-        cleaned = [clean_prediction(p, LABELS) for p in preds]
+        parsed = [parse_prediction(p, LABELS) for p in preds]
+        cleaned = [lab for lab, _ in parsed]
+        fallback_counter[0] += sum(fb for _, fb in parsed)
+        fallback_counter[1] += len(parsed)
         correct = [p == t for p, t in zip(cleaned, truths)]
         accs.append(float(np.mean(correct)))
         yield batch, cleaned, correct, accs[-1]
@@ -68,26 +73,42 @@ def run_arm(name, conn, train_data, test_data, *, retrieval, eigen, static_conte
     )
 
     result = {"train_accs": [], "test_acc": None, "test_by_polarity": {}, "n_axioms": 0}
+    fallbacks = [0, 0]  # [fired, total] across both phases
 
     if train:
-        for i, (_, _, _, acc) in enumerate(run_phase(agent, train_data, learn=True)):
+        for i, (_, _, _, acc) in enumerate(run_phase(agent, train_data, learn=True, fallback_counter=fallbacks)):
             print(f"[{name}] train batch {i+1}/{N_TRAIN//BATCH}: acc={acc:.2f}", flush=True)
             result["train_accs"].append(acc)
+
+    # Health telemetry, captured after training so a degraded signal is loud in
+    # the artifact (this repo's history is three silent constant-surprise bugs).
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM episodic_buffer")
+        result["buffer_size"] = cur.fetchone()[0]
+    result["embed_failures"] = agent.embed_failures
+    result["nll_missing_rate"] = (
+        agent.nll_missing / agent.nll_probes if agent.nll_probes else None
+    )
 
     # Test phase: feedback off, memory frozen (run_batch never writes).
     by_pol = {"request": [], "report": []}
     all_correct = []
-    for batch, _, correct, acc in run_phase(agent, test_data, learn=False):
+    for batch, _, correct, acc in run_phase(agent, test_data, learn=False, fallback_counter=fallbacks):
         for item, c in zip(batch, correct):
             by_pol[item["meta"]["polarity"]].append(c)
             all_correct.append(c)
     result["test_acc"] = float(np.mean(all_correct))
     result["test_by_polarity"] = {k: float(np.mean(v)) for k, v in by_pol.items() if v}
+    result["parse_fallback_rate"] = fallbacks[0] / fallbacks[1] if fallbacks[1] else None
     print(f"[{name}] HELD-OUT accuracy: {result['test_acc']:.3f} "
           f"by polarity: {result['test_by_polarity']}", flush=True)
+    print(f"[{name}] health: buffer={result.get('buffer_size', 0)} "
+          f"embed_failures={result['embed_failures']} "
+          f"nll_missing_rate={result['nll_missing_rate']} "
+          f"parse_fallback_rate={result['parse_fallback_rate']:.2f}", flush=True)
 
     if eigen:
-        result["detectability"] = [(float(l), float(e)) for l, e in agent.kernel.detectability_history]
+        result["detectability"] = [(float(lam), float(edge)) for lam, edge in agent.kernel.detectability_history]
         result["n_axioms"] = len(agent.kernel.consumed_directions)
         with conn.cursor() as cur:
             cur.execute("SELECT axiom_content, strength_score FROM semantic_core")
@@ -119,7 +140,7 @@ def main():
     results["arms"]["Treatment_Eigen"] = run_arm(
         "Treatment_Eigen", conn, train_data, test_data, retrieval=True, eigen=True)
 
-    with open("comparison_results.flip.json", "w") as f:
+    with open(f"comparison_results.flip.{SEED}.json", "w") as f:
         json.dump(results, f, indent=2)
 
     print("\n=== HELD-OUT SUMMARY (frozen memory, disjoint surface vocabulary) ===")

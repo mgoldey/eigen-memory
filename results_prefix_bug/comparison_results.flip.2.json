@@ -1,0 +1,84 @@
+{
+  "seed": 2,
+  "n_train": 100,
+  "n_test": 45,
+  "arms": {
+    "Baseline": {
+      "train_accs": [],
+      "test_acc": 0.4444444444444444,
+      "test_by_polarity": {
+        "request": 0.6,
+        "report": 0.32
+      },
+      "n_axioms": 0
+    },
+    "Oracle_Rule": {
+      "train_accs": [],
+      "test_acc": 0.4,
+      "test_by_polarity": {
+        "request": 0.1,
+        "report": 0.64
+      },
+      "n_axioms": 0
+    },
+    "Control_RAG": {
+      "train_accs": [
+        0.6,
+        0.5,
+        0.6,
+        0.4,
+        0.4,
+        0.4,
+        0.8,
+        0.4,
+        0.4,
+        0.7
+      ],
+      "test_acc": 0.6,
+      "test_by_polarity": {
+        "request": 0.85,
+        "report": 0.4
+      },
+      "n_axioms": 0
+    },
+    "Treatment_Eigen": {
+      "train_accs": [
+        0.5,
+        0.6,
+        0.7,
+        0.4,
+        0.4,
+        0.5,
+        0.7,
+        0.6,
+        0.5,
+        0.7
+      ],
+      "test_acc": 0.6666666666666666,
+      "test_by_polarity": {
+        "request": 1.0,
+        "report": 0.4
+      },
+      "n_axioms": 0,
+      "detectability": [
+        [
+          0.05771569499165282,
+          0.060314633182383386
+        ],
+        [
+          0.04923824965054879,
+          0.058108682575151865
+        ],
+        [
+          0.04144080373297407,
+          0.05120808040477138
+        ],
+        [
+          0.038865270462719856,
+          0.04627404810473894
+        ]
+      ],
+      "axioms": []
+    }
+  }
+}

@@ -52,6 +52,9 @@ class FakeConn:
     def commit(self):
         self.commits += 1
 
+    def rollback(self):
+        pass
+
 
 class FakeLLM:
     """Mimics client.chat.completions.create; records prompts."""
@@ -152,6 +155,10 @@ def test_crystallizes_planted_axis_with_aligned_direction(rig):
     assert cos > 0.9, f"stored direction must align with the planted axis (cos={cos:.3f})"
     assert strength > 1.0  # detectability margin lambda1/edge
     assert "RULE:" in axiom_content
+    # Only the final RULE: line is stored — the <thought> scaffolding must be
+    # stripped, or it gets injected into every future context (review finding).
+    assert "<thought>" not in axiom_content
+    assert axiom_content.startswith("RULE:")
 
     # The prompt must be task-neutral and built from both extremes of the axis.
     prompt = llm.prompts[-1]
@@ -193,15 +200,19 @@ def test_axiom_scoring_is_sign_invariant_and_centered(rig):
     assert scored2[0][0] == pytest.approx(2.0)
 
 
-def test_clean_prediction_last_line_and_earliest_occurrence_fallback():
+def test_clean_prediction_last_line_and_last_occurrence_fallback():
     labels = ["RED", "BLUE", "GREEN"]
     assert clean_prediction("<thought>hmm</thought>\nBLUE", labels) == "BLUE"
     assert clean_prediction("blue.", labels) == "BLUE"
-    # Truncated CoT with no final label line: must pick the label appearing
-    # EARLIEST in the text, not the first in label-list order (old RED bias).
-    truncated = "<thought>It could be GREEN because it is even, or maybe RED since"
-    assert clean_prediction(truncated, labels) == "GREEN"
-    assert clean_prediction("no labels here", labels) == "NO LABELS HERE"
+    assert clean_prediction("**GREEN**", labels) == "GREEN"  # markdown-wrapped
+    # Truncated CoT with no final label line: pick the LAST label mentioned —
+    # the model's most recent hypothesis. Earliest-occurrence re-inherited
+    # label-list order whenever the response restated its options first.
+    restated = "<thought>The options are RED, BLUE, GREEN. This looks like BLUE bec"
+    assert clean_prediction(restated, labels) == "BLUE"
+    # Word-boundary: a label inside a longer word must not match.
+    assert clean_prediction("I keep a PROFILE of cases", ["FILE"]) != "FILE"
+    assert clean_prediction("no labels here", labels) not in labels
 
 
 def test_surprise_probe_is_memory_conditional():

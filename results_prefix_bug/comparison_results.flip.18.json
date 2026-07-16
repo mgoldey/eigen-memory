@@ -1,0 +1,89 @@
+{
+  "seed": 18,
+  "n_train": 100,
+  "n_test": 45,
+  "arms": {
+    "Baseline": {
+      "train_accs": [],
+      "test_acc": 0.3111111111111111,
+      "test_by_polarity": {
+        "request": 0.4,
+        "report": 0.24
+      },
+      "n_axioms": 0
+    },
+    "Oracle_Rule": {
+      "train_accs": [],
+      "test_acc": 0.4222222222222222,
+      "test_by_polarity": {
+        "request": 0.1,
+        "report": 0.68
+      },
+      "n_axioms": 0
+    },
+    "Control_RAG": {
+      "train_accs": [
+        0.4,
+        0.2,
+        0.5,
+        0.4,
+        0.9,
+        0.8,
+        0.4,
+        0.9,
+        0.7,
+        0.4
+      ],
+      "test_acc": 0.4888888888888889,
+      "test_by_polarity": {
+        "request": 0.45,
+        "report": 0.52
+      },
+      "n_axioms": 0
+    },
+    "Treatment_Eigen": {
+      "train_accs": [
+        0.4,
+        0.2,
+        0.5,
+        0.4,
+        0.8,
+        0.7,
+        0.4,
+        0.8,
+        0.4,
+        0.3
+      ],
+      "test_acc": 0.3333333333333333,
+      "test_by_polarity": {
+        "request": 0.25,
+        "report": 0.4
+      },
+      "n_axioms": 1,
+      "detectability": [
+        [
+          0.07758845572030901,
+          0.0700180017385741
+        ],
+        [
+          0.0719085231531373,
+          0.059712142504083306
+        ],
+        [
+          0.060114591062496545,
+          0.051212625688335664
+        ],
+        [
+          0.050055966203353675,
+          0.045163468358017454
+        ]
+      ],
+      "axioms": [
+        {
+          "strength": 1.2042529398140414,
+          "rule": "The predicted label should be ESCALATE if the tracking note indicates a pending issue with immediate urgency, and FILE if it documents a completed action or a state with no immediate urgency."
+        }
+      ]
+    }
+  }
+}

@@ -20,9 +20,25 @@ def test_nll_found_token_returns_negative_logprob():
     assert _extract_nll(tops, "RED") == 0.1
 
 
-def test_nll_case_insensitive_substring_match():
+def test_nll_case_insensitive_match():
     tops = [_TL(" Blue", -1.5)]
     assert _extract_nll(tops, "BLUE") == 1.5
+
+
+def test_nll_matches_multitoken_label_by_prefix():
+    # Tokenizers split long labels ("ESCALATE" -> "ES"); requiring the full
+    # label inside one token silently returned MISSING_TOKEN_NLL for every item
+    # of that class — the constant-surprise bug class, third instance.
+    tops = [_TL("FILE", -0.01), _TL("ES", -4.7), _TL("DE", -10.4)]
+    assert _extract_nll(tops, "ESCALATE") == 4.7
+    assert _extract_nll(tops, "DEFER") == 10.4
+    assert _extract_nll(tops, "FILE") == 0.01
+
+
+def test_nll_token_longer_than_label_does_not_match():
+    # "REDS" is not the label "RED"; prefix matching must not fire on it.
+    tops = [_TL("REDS", -0.5)]
+    assert _extract_nll(tops, "RED") == MISSING_TOKEN_NLL
 
 
 def test_nll_missing_token_returns_high_finite():

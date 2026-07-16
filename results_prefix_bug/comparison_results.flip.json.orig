@@ -1,0 +1,89 @@
+{
+  "seed": 42,
+  "n_train": 100,
+  "n_test": 45,
+  "arms": {
+    "Baseline": {
+      "train_accs": [],
+      "test_acc": 0.2222222222222222,
+      "test_by_polarity": {
+        "request": 0.3,
+        "report": 0.16
+      },
+      "n_axioms": 0
+    },
+    "Oracle_Rule": {
+      "train_accs": [],
+      "test_acc": 0.4666666666666667,
+      "test_by_polarity": {
+        "request": 0.35,
+        "report": 0.56
+      },
+      "n_axioms": 0
+    },
+    "Control_RAG": {
+      "train_accs": [
+        0.2,
+        0.6,
+        0.5,
+        0.3,
+        0.7,
+        0.5,
+        0.2,
+        0.3,
+        0.3,
+        0.8
+      ],
+      "test_acc": 0.5333333333333333,
+      "test_by_polarity": {
+        "request": 0.6,
+        "report": 0.48
+      },
+      "n_axioms": 0
+    },
+    "Treatment_Eigen": {
+      "train_accs": [
+        0.4,
+        0.4,
+        0.7,
+        0.4,
+        0.7,
+        0.5,
+        0.2,
+        0.4,
+        0.4,
+        0.2
+      ],
+      "test_acc": 0.35555555555555557,
+      "test_by_polarity": {
+        "request": 0.55,
+        "report": 0.2
+      },
+      "n_axioms": 1,
+      "detectability": [
+        [
+          0.06497072160277587,
+          0.06586156419702163
+        ],
+        [
+          0.06051061568202703,
+          0.06219030977683265
+        ],
+        [
+          0.05790893481702494,
+          0.05152039765262036
+        ],
+        [
+          0.05148931070156589,
+          0.04642132888137154
+        ]
+      ],
+      "axioms": [
+        {
+          "strength": 1.1240001524731953,
+          "rule": "If the input describes a completed action or a status update without a clear indication of a problem needing immediate attention, predict DEFER; otherwise, predict ESCALATE."
+        }
+      ]
+    }
+  }
+}

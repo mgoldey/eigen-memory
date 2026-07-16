@@ -1,5 +1,6 @@
-import hashlib
 import json
+import math
+import re
 
 import numpy as np
 from openai import OpenAI
@@ -8,35 +9,60 @@ import psycopg2
 from .memory_kernel import EigenMemoryKernel
 
 try:
-    from src.config import OLLAMA_BASE_URL
+    from src.config import OLLAMA_BASE_URL, EMBEDDING_MODEL
 except ImportError:  # allow import when run as a standalone module
     OLLAMA_BASE_URL = "http://localhost:11434/v1"
+    EMBEDDING_MODEL = "embeddinggemma:latest"
 
 # --- Surprise / memory thresholds (in nats of NLL) ---
 # Surprise assigned when the true-label token is absent from the top-k logprobs.
 # Floors a "missing" token at a high-but-finite value so it reliably counts as
 # surprising without the old bug where this case silently collapsed to a flat 2.0.
 MISSING_TOKEN_NLL = 7.0
-# An experience is written to the episodic buffer when its predictive surprise
-# (or perceptual salience) clears this bar. Tuned to the observed NLL distribution
-# of gemma3:4b on this task so that genuine mistakes are recorded.
-EPISODIC_WRITE_NLL = 1.0
 # Cap on the prediction call's chain-of-thought tokens. Enough room for a short
 # <thought> block plus the final label line, without the ~1.3k-char ramble that
 # makes each call slow and tends to make a 4B model drift.
 PREDICTION_MAX_TOKENS = 200
 # How many axioms to inject into context (Treatment arm only).
 AXIOM_INJECT_TOP_K = 2
+# Fixed sampling seed for every LLM call: per-run variation must come from the
+# DATA seed, not from Ollama's default temperature=0.8 sampling noise.
+LLM_SEED = 0
+
+# The prediction prompt, module-level so it is reviewable next to the surprise
+# probe (and so its lines carry no accidental indentation into the model).
+PREDICTION_PROMPT = """\
+You are playing a pattern recognition game.
+Valid outputs are only: {label_str}.
+
+{context}
+
+Task: Analyze the input and rules inside <thought> blocks.
+Your final line must be exactly one of: {label_str}.
+
+Input: {x}
+Output:"""
 
 
 def _extract_nll(top_logprobs, true_label):
     """Negative log-likelihood (nats) of the true label among top-k logprobs.
 
-    Returns MISSING_TOKEN_NLL when the true-label token does not appear in the
-    top-k, rather than leaving the value undefined (the original bug).
+    The probe emits at most one token, and tokenizers split long labels
+    ("ESCALATE" -> "ES"/"ESC", "DEFER" -> "DE"), so the match is: the candidate
+    token must be a PREFIX of the true label. The previous check required the
+    full label inside one token, which silently returned MISSING_TOKEN_NLL for
+    every item of a multi-token class — the third instance of this repo's
+    constant-surprise bug class (see FINDINGS.md). Label sets must therefore
+    have distinct first tokens (RED/BLUE/GREEN, HUM/LOC/NUM,
+    ESCALATE/FILE/DEFER all do).
+
+    Returns MISSING_TOKEN_NLL when no token matches, rather than leaving the
+    value undefined (the original bug).
     """
+    lab = true_label.strip().upper()
     for tl in top_logprobs:
-        if true_label.upper() in tl.token.upper():
+        tok = tl.token.upper().strip(" .,:;!?'\"")
+        if tok and lab.startswith(tok):
             return float(-tl.logprob)
     return MISSING_TOKEN_NLL
 
@@ -73,30 +99,46 @@ def _surprise_messages(query, labels=DEFAULT_LABELS, context=""):
     ]
 
 
-def clean_prediction(raw, labels):
+def parse_prediction(raw, labels):
     """Extract the predicted label from a raw CoT response.
 
-    Take the last non-empty line; if it isn't a valid label, fall back to the
-    EARLIEST occurrence of any valid label in the text (position order, not
-    label-list order — the old fallback scanned in label-list order, which
-    systematically biased truncated responses toward the first label).
+    Returns (label, used_fallback). Take the last non-empty line stripped of
+    punctuation and markdown; if it isn't a valid label, fall back to the LAST
+    word-boundary occurrence of any label in the text. Last, not first: CoT
+    responses often restate the option list before deciding, so the earliest
+    occurrence just re-inherits label-list order (the old RED bias in a new
+    coat). Word-boundary, so "FILE" cannot match "PROFILE". Callers should
+    track the fallback rate — it fires mostly on truncated responses, and
+    truncation frequency varies with context length, i.e. by arm.
     """
-    lines = [l.strip() for l in raw.strip().split("\n") if l.strip()]
-    p = (
-        lines[-1].upper().replace(".", "").replace("'", "").replace('"', "")
-        if lines
-        else "ERROR"
-    )
-    if p not in labels:
-        up = raw.upper()
-        hits = [(up.find(lab), lab) for lab in labels if lab in up]
-        if hits:
-            p = min(hits)[1]
-    return p
+    lines = [ln.strip() for ln in raw.strip().splitlines() if ln.strip()]
+    p = re.sub(r"[^A-Z]", "", lines[-1].upper()) if lines else "ERROR"
+    if p in labels:
+        return p, False
+    hits = [
+        (m.start(), lab)
+        for lab in labels
+        for m in re.finditer(rf"\b{re.escape(lab)}\b", raw.upper())
+    ]
+    return (max(hits)[1] if hits else p), True
+
+
+def clean_prediction(raw, labels):
+    """parse_prediction without the fallback flag (back-compat)."""
+    return parse_prediction(raw, labels)[0]
 
 
 class AgenticMemoryLoop:
-    def __init__(self, db_string, openai_client=None, model="gemma3:4b", thought_model="gemma3:4b", enable_retrieval=True, enable_eigen_memory=True, labels=None, static_context=""):
+    """The agent loop: embed, retrieve, predict, measure surprise, learn.
+
+    Arms are configured by the keyword flags: retrieval off + eigen off is the
+    Baseline; retrieval on is Control_RAG; both on is Treatment_Eigen; a
+    static_context with retrieval off is an Oracle arm.
+    """
+
+    def __init__(self, db_string, openai_client=None, *, model="gemma3:4b",
+                 thought_model="gemma3:4b", enable_retrieval=True,
+                 enable_eigen_memory=True, labels=None, static_context=""):
         self.conn = psycopg2.connect(db_string)
         # Valid label set for this task (RED/BLUE/GREEN by default; e.g.
         # HUM/LOC/NUM for TREC). Used in both the prediction and surprise prompts.
@@ -115,25 +157,28 @@ class AgenticMemoryLoop:
         self.enable_retrieval = enable_retrieval
         self.enable_eigen_memory = enable_eigen_memory
         self.kernel = EigenMemoryKernel(self.conn, self.client, model=self.thought_model)
-        self.state_hash = self._get_hash()
-
-    def _get_hash(self):
-        return hashlib.sha256(f"{self.model}".encode()).hexdigest()
+        # An episode is written when its predictive surprise clears chance-level
+        # NLL for this label set (ln 3 ≈ 1.10 for three classes). The old fixed
+        # 1.0 threshold sat BELOW chance, making the gate nearly write-everything.
+        self.write_nll = math.log(len(self.labels))
+        # Health counters, persisted into results by the experiment scripts so a
+        # degraded signal is loud instead of silently constant (see FINDINGS.md).
+        self.embed_failures = 0
+        self.nll_probes = 0
+        self.nll_missing = 0
 
     def _embed(self, text):
-        # Use a dedicated embedding model via Ollama
         try:
-             # We use 'embeddinggemma:latest' as requested
-             res = self.client.embeddings.create(input=str(text), model="embeddinggemma:latest")
-             return np.array(res.data[0].embedding)
+            res = self.client.embeddings.create(input=str(text), model=EMBEDDING_MODEL)
+            return np.array(res.data[0].embedding)
         except Exception as e:
-            # Fallback: a random vector keeps the run alive, but it turns retrieval
-            # into noise for this item. Count failures so a degraded run is visible
-            # rather than silently corrupting results.
-            self.embed_failures = getattr(self, "embed_failures", 0) + 1
-            print(f"Warning: Embedding failed ({e}), using random vector. "
-                  f"(total embed failures: {self.embed_failures})")
-            return np.random.rand(768)
+            # No fallback vector: a random embedding written to the buffer would
+            # corrupt retrieval for the rest of the run. Skip memory for this
+            # item instead, and count it so a degraded run is visible.
+            self.embed_failures += 1
+            print(f"Warning: embedding failed ({e}); skipping memory for this "
+                  f"item (total failures: {self.embed_failures})")
+            return None
 
 
     def run_batch(self, inputs):
@@ -154,7 +199,7 @@ class AgenticMemoryLoop:
         for x in inputs:
             q_vec = self._embed(x)
             embeddings.append(q_vec)
-            context, nn_vec = self._retrieve_context(q_vec)
+            context, nn_vec = ("", None) if q_vec is None else self._retrieve_context(q_vec)
             if self.static_context:
                 context = self.static_context + ("\n\n" + context if context else "")
             contexts.append(context)
@@ -162,16 +207,7 @@ class AgenticMemoryLoop:
 
             # 2. Predict with CoT and Logprobs
             label_str = ", ".join(self.labels)
-            prompt = f"""You are playing a pattern recognition game.
-            Valid outputs are only: {label_str}.
-
-            {context}
-
-            Task: Analyze the input and rules inside <thought> blocks.
-            Your final line must be exactly one of: {label_str}.
-
-            Input: {x}
-            Output:"""
+            prompt = PREDICTION_PROMPT.format(label_str=label_str, context=context, x=x)
 
             try:
                 pred_resp = self.client.chat.completions.create(
@@ -179,6 +215,8 @@ class AgenticMemoryLoop:
                     messages=[{"role": "user", "content": prompt}],
                     logprobs=True,
                     top_logprobs=5,  # To see distribution across labels
+                    temperature=0.0,
+                    seed=LLM_SEED,
                     # Cap the chain-of-thought. Uncapped, gemma3:4b emits ~1.3k chars
                     # of reasoning per call (slow, and long CoT tends to drift on a
                     # 4B model). A short budget keeps the final RED/BLUE/GREEN line.
@@ -191,8 +229,8 @@ class AgenticMemoryLoop:
                 if pred_resp.choices[0].logprobs and pred_resp.choices[0].logprobs.content:
                     logprobs_info = pred_resp.choices[0].logprobs.content
                     top = logprobs_info[0].top_logprobs
-                    probs = [np.exp(tl.logprob) for tl in top]
-                    entropy = -np.sum([p * np.log(p + 1e-10) for p in probs])
+                    probs = [math.exp(tl.logprob) for tl in top]
+                    entropy = -sum(p * math.log(p) for p in probs)
                     perceptual_surprises.append(entropy)
                     salience_flags.append(entropy > 0.8)
                 else:
@@ -233,7 +271,9 @@ class AgenticMemoryLoop:
                     messages=_surprise_messages(query, self.labels, context),
                     logprobs=True,
                     top_logprobs=10,
-                    max_tokens=1
+                    max_tokens=1,
+                    temperature=0.0,
+                    seed=LLM_SEED,
                 )
 
                 if res.choices[0].logprobs and res.choices[0].logprobs.content:
@@ -243,11 +283,18 @@ class AgenticMemoryLoop:
                     # (the original code left target_lp undefined here and silently
                     # collapsed every miss to a flat 2.0 via the except path).
                     s_pred = _extract_nll(lp_content.top_logprobs, outcome)
+                    self.nll_probes += 1
+                    if s_pred == MISSING_TOKEN_NLL:
+                        self.nll_missing += 1
                 else:
                     # Fallback to Embedding Surprise if logprobs missing
                     v_pred = self._embed(pred_label)
                     v_out = self._embed(outcome)
-                    s_pred = (1 - np.dot(v_pred, v_out)) * 5.0
+                    s_pred = (
+                        (1 - float(np.dot(v_pred, v_out))) * 5.0
+                        if v_pred is not None and v_out is not None
+                        else 2.0
+                    )
 
                 predictive_surprises.append(s_pred)
 
@@ -256,8 +303,10 @@ class AgenticMemoryLoop:
                 s_pred = 2.0 # Manual high surprise fallback
                 predictive_surprises.append(s_pred)
 
-            # Store in Episodic Buffer if either Salient (Perceptual) or Surprising (Predictive)
-            if is_salient or s_pred > EPISODIC_WRITE_NLL:
+            # Store in Episodic Buffer if either Salient (Perceptual) or Surprising
+            # (Predictive). Skipped when embedding failed — a memory row without a
+            # real embedding poisons retrieval.
+            if q_vec is not None and (is_salient or s_pred > self.write_nll):
                 try:
                     with self.conn.cursor() as cur:
                         cur.execute(
@@ -328,7 +377,9 @@ class AgenticMemoryLoop:
                     print(f"[AXIOM→] injected {len(axioms)} axiom(s) into context")
                     ctx_str += "\nRelevant Rules/Memories:\n"
                     for _, content in axioms:
-                        ctx_str += f"- RULE: {content}\n"
+                        # content is the stored "RULE: ..." line (the kernel
+                        # strips the CoT scaffolding before the INSERT).
+                        ctx_str += f"- {content}\n"
 
         return (ctx_str if ctx_str else "No relevant memories found."), nn_vec
 

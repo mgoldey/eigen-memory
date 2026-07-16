@@ -1,0 +1,93 @@
+{
+  "seed": 23,
+  "n_train": 100,
+  "n_test": 45,
+  "arms": {
+    "Baseline": {
+      "train_accs": [],
+      "test_acc": 0.26666666666666666,
+      "test_by_polarity": {
+        "request": 0.2692307692307692,
+        "report": 0.2631578947368421
+      },
+      "n_axioms": 0
+    },
+    "Oracle_Rule": {
+      "train_accs": [],
+      "test_acc": 0.26666666666666666,
+      "test_by_polarity": {
+        "request": 0.15384615384615385,
+        "report": 0.42105263157894735
+      },
+      "n_axioms": 0
+    },
+    "Control_RAG": {
+      "train_accs": [
+        0.1,
+        0.3,
+        0.7,
+        0.3,
+        0.3,
+        0.3,
+        0.7,
+        0.3,
+        0.5,
+        0.5
+      ],
+      "test_acc": 0.5111111111111111,
+      "test_by_polarity": {
+        "request": 0.46153846153846156,
+        "report": 0.5789473684210527
+      },
+      "n_axioms": 0
+    },
+    "Treatment_Eigen": {
+      "train_accs": [
+        0.2,
+        0.5,
+        0.7,
+        0.4,
+        0.3,
+        0.2,
+        0.6,
+        0.3,
+        0.1,
+        0.7
+      ],
+      "test_acc": 0.4444444444444444,
+      "test_by_polarity": {
+        "request": 0.38461538461538464,
+        "report": 0.5263157894736842
+      },
+      "n_axioms": 1,
+      "detectability": [
+        [
+          0.08278188588225821,
+          0.07363076663952489
+        ],
+        [
+          0.07214491807627496,
+          0.06654365683526452
+        ],
+        [
+          0.06128940802778448,
+          0.05716344168474202
+        ],
+        [
+          0.05671111258270996,
+          0.050516345536409886
+        ],
+        [
+          0.056024075203809615,
+          0.04140686662303101
+        ]
+      ],
+      "axioms": [
+        {
+          "strength": 1.084174232487357,
+          "rule": "The predicted label corresponds to the level of active tracking and escalation in the input note - escalate if the note indicates stagnation and a lack of active management, file/defer otherwise."
+        }
+      ]
+    }
+  }
+}

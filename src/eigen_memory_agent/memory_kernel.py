@@ -38,8 +38,10 @@ MIN_FAIL_RESIDUALS = 25
 MIN_SUCC_RESIDUALS = 10
 # Number of label-shuffles used to estimate the noise edge. The edge is the max
 # top-eigenvalue over shuffles: anything a random fail/success split can produce
-# is noise by construction.
-N_PERMUTATIONS = 5
+# is noise by construction. With max-over-N as the edge, a pure-noise lambda1
+# clears it with probability ~1/(N+1) per check — 20 shuffles keeps that under
+# 5% (the old value of 5 allowed ~17%, and the gate is re-checked every batch).
+N_PERMUTATIONS = 20
 # The direction must persist across consecutive checks (|cos| above this) before
 # it is trusted — the failure stream is non-stationary, so a one-off axis is noise.
 STABILITY_COS = 0.95
@@ -66,9 +68,11 @@ def _top_contrast_eig(fail_r, succ_r):
 def crystallization_prompt(side_a, side_b, successes):
     """Task-neutral contrastive prompt. side_a/side_b: (input, predicted, actual)
     tuples from opposite extremes of the detected axis; successes: (input, actual)."""
-    fmt_f = lambda rows: "\n".join(
-        f"- Input: {i} | I predicted: {p} | Actual: {a}" for i, p, a in rows
-    )
+    def fmt_f(rows):
+        return "\n".join(
+            f"- Input: {i} | I predicted: {p} | Actual: {a}" for i, p, a in rows
+        )
+
     fmt_s = "\n".join(f"- Input: {i} | Actual: {a}" for i, a in successes) or "- (none available)"
     return f"""I am a classification agent making systematic mistakes. My failures vary along a single hidden axis. Below are failures from the two opposite ends of that axis, plus similar cases I got right.
 
@@ -261,9 +265,23 @@ class EigenMemoryKernel:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                seed=0,
+                max_tokens=400,
             )
-            axiom = response.choices[0].message.content
+            raw = response.choices[0].message.content or ""
+        except Exception as e:
+            print(f"[EIGEN] crystallization LLM call failed: {e}")
+            return
 
+        # Store ONLY the final RULE: line. The <thought> block is scaffolding for
+        # the introspection call; storing the full reply used to inject ~1.2k
+        # chars of CoT rambling into every context the axiom was selected for —
+        # sabotaging the very arm under test.
+        rule = raw.rpartition("RULE:")[2].strip()
+        axiom = f"RULE: {rule}" if rule else raw.strip()
+
+        try:
             with self.conn.cursor() as cur:
                 cur.execute(
                     """
@@ -273,10 +291,16 @@ class EigenMemoryKernel:
                     (axiom, v_full.tolist(), float(strength)),
                 )
             self.conn.commit()
-            self.consumed_directions.append(v_full)
-            print(f"[AXIOM+] {axiom[:60].strip()}...")
         except Exception as e:
-            print(f"Failed to crystallize axiom: {e}")
+            # Roll back so the connection is not left in an aborted-transaction
+            # state that would poison every later DB call on it. The axis stays
+            # unconsumed, so crystallization retries at the next check.
+            self.conn.rollback()
+            print(f"[EIGEN] axiom store failed: {e}")
+            return
+
+        self.consumed_directions.append(v_full)
+        print(f"[AXIOM+] {axiom[:80].strip()}...")
 
     # ------------------------------------------------------------- inference use
 
@@ -295,6 +319,8 @@ class EigenMemoryKernel:
         scored = []
         for content, vec in axiom_rows:
             if isinstance(vec, str):
+                # pgvector's text literal ("[0.1,0.2,...]") happens to be valid
+                # JSON — a format coincidence, named here so it reads as a choice.
                 vec = json.loads(vec)
             v = np.asarray(vec, dtype=float)
             scored.append((abs(float(centered @ v)), content))
