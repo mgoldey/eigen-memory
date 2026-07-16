@@ -1,0 +1,163 @@
+{
+  "snrs": [
+    0.0,
+    1.0,
+    2.0,
+    4.0,
+    8.0,
+    16.0
+  ],
+  "n_fails": [
+    50,
+    100,
+    200
+  ],
+  "replicates": 20,
+  "cells": {
+    "n50_snr0.0": {
+      "fire_rate": 0.0,
+      "detect_rate": 0.0,
+      "mean_cross_check_cos": 0.3353359719939924,
+      "mean_margin": 0.9688841304986454,
+      "edge_used": 24.4538706001263,
+      "beta": 0.0
+    },
+    "n50_snr1.0": {
+      "fire_rate": 0.0,
+      "detect_rate": 1.0,
+      "mean_cross_check_cos": 0.8356379711194665,
+      "mean_margin": 1.2913209452123586,
+      "edge_used": 24.4538706001263,
+      "beta": 4.9450854997791795
+    },
+    "n50_snr2.0": {
+      "fire_rate": 0.0,
+      "detect_rate": 1.0,
+      "mean_cross_check_cos": 0.8947183740209408,
+      "mean_margin": 1.5498843395272224,
+      "edge_used": 24.4538706001263,
+      "beta": 6.993406980882251
+    },
+    "n50_snr4.0": {
+      "fire_rate": 0.0,
+      "detect_rate": 1.0,
+      "mean_cross_check_cos": 0.9364800710106888,
+      "mean_margin": 1.9014799980629404,
+      "edge_used": 24.4538706001263,
+      "beta": 9.890170999558359
+    },
+    "n50_snr8.0": {
+      "fire_rate": 1.0,
+      "detect_rate": 1.0,
+      "mean_cross_check_cos": 0.9647556412489564,
+      "mean_margin": 2.2920165851668046,
+      "edge_used": 24.4538706001263,
+      "beta": 13.986813961764502
+    },
+    "n50_snr16.0": {
+      "fire_rate": 1.0,
+      "detect_rate": 1.0,
+      "mean_cross_check_cos": 0.9813439459172322,
+      "mean_margin": 2.8204063317067107,
+      "edge_used": 24.4538706001263,
+      "beta": 19.780341999116718
+    },
+    "n100_snr0.0": {
+      "fire_rate": 0.0,
+      "detect_rate": 0.05,
+      "mean_cross_check_cos": 0.37951842708455413,
+      "mean_margin": 0.97007555371904,
+      "edge_used": 13.420368556372342,
+      "beta": 0.0
+    },
+    "n100_snr1.0": {
+      "fire_rate": 0.0,
+      "detect_rate": 1.0,
+      "mean_cross_check_cos": 0.8180485147686198,
+      "mean_margin": 1.3916607036685653,
+      "edge_used": 13.420368556372342,
+      "beta": 3.663382119895813
+    },
+    "n100_snr2.0": {
+      "fire_rate": 0.0,
+      "detect_rate": 1.0,
+      "mean_cross_check_cos": 0.8989985120253475,
+      "mean_margin": 1.7708329647572179,
+      "edge_used": 13.420368556372342,
+      "beta": 5.180804678111759
+    },
+    "n100_snr4.0": {
+      "fire_rate": 0.0,
+      "detect_rate": 1.0,
+      "mean_cross_check_cos": 0.9403217220473123,
+      "mean_margin": 2.310951243016193,
+      "edge_used": 13.420368556372342,
+      "beta": 7.326764239791626
+    },
+    "n100_snr8.0": {
+      "fire_rate": 1.0,
+      "detect_rate": 1.0,
+      "mean_cross_check_cos": 0.9674872328846533,
+      "mean_margin": 2.85258826563905,
+      "edge_used": 13.420368556372342,
+      "beta": 10.361609356223518
+    },
+    "n100_snr16.0": {
+      "fire_rate": 1.0,
+      "detect_rate": 1.0,
+      "mean_cross_check_cos": 0.9826241073603551,
+      "mean_margin": 3.6380828761978705,
+      "edge_used": 13.420368556372342,
+      "beta": 14.653528479583253
+    },
+    "n200_snr0.0": {
+      "fire_rate": 0.0,
+      "detect_rate": 0.05,
+      "mean_cross_check_cos": 0.27254374923415364,
+      "mean_margin": 0.971412177605262,
+      "edge_used": 7.400756494286047,
+      "beta": 0.0
+    },
+    "n200_snr1.0": {
+      "fire_rate": 0.0,
+      "detect_rate": 1.0,
+      "mean_cross_check_cos": 0.7854778098847065,
+      "mean_margin": 1.4496486516482674,
+      "edge_used": 7.400756494286047,
+      "beta": 2.7204331446087857
+    },
+    "n200_snr2.0": {
+      "fire_rate": 0.0,
+      "detect_rate": 1.0,
+      "mean_cross_check_cos": 0.8887944478528927,
+      "mean_margin": 2.0255722708556165,
+      "edge_used": 7.400756494286047,
+      "beta": 3.847273448635032
+    },
+    "n200_snr4.0": {
+      "fire_rate": 0.0,
+      "detect_rate": 1.0,
+      "mean_cross_check_cos": 0.9402117243072746,
+      "mean_margin": 2.83849830800919,
+      "edge_used": 7.400756494286047,
+      "beta": 5.440866289217571
+    },
+    "n200_snr8.0": {
+      "fire_rate": 1.0,
+      "detect_rate": 1.0,
+      "mean_cross_check_cos": 0.9690058115226595,
+      "mean_margin": 3.5666534734109865,
+      "edge_used": 7.400756494286047,
+      "beta": 7.694546897270064
+    },
+    "n200_snr16.0": {
+      "fire_rate": 1.0,
+      "detect_rate": 1.0,
+      "mean_cross_check_cos": 0.9842320406981692,
+      "mean_margin": 4.771768213603348,
+      "edge_used": 7.400756494286047,
+      "beta": 10.881732578435143
+    }
+  },
+  "specificity_pass": true
+}
