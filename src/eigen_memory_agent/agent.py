@@ -1,7 +1,10 @@
 import hashlib
+import json
+
 import numpy as np
 from openai import OpenAI
 import psycopg2
+
 from .memory_kernel import EigenMemoryKernel
 
 try:
@@ -18,14 +21,12 @@ MISSING_TOKEN_NLL = 7.0
 # (or perceptual salience) clears this bar. Tuned to the observed NLL distribution
 # of gemma3:4b on this task so that genuine mistakes are recorded.
 EPISODIC_WRITE_NLL = 1.0
-# A surprise vector feeds the Eigen kernel (and may crystallize an axiom) above
-# this bar. Set higher than the write bar so axioms form from the *most* surprising
-# events, not every recorded one.
-EIGEN_CRYSTALLIZE_NLL = 1.5
 # Cap on the prediction call's chain-of-thought tokens. Enough room for a short
 # <thought> block plus the final label line, without the ~1.3k-char ramble that
 # makes each call slow and tends to make a 4B model drift.
 PREDICTION_MAX_TOKENS = 200
+# How many axioms to inject into context (Treatment arm only).
+AXIOM_INJECT_TOP_K = 2
 
 
 def _extract_nll(top_logprobs, true_label):
@@ -48,9 +49,18 @@ def _extract_nll(top_logprobs, true_label):
 DEFAULT_LABELS = ["RED", "BLUE", "GREEN"]
 
 
-def _surprise_messages(query, labels=DEFAULT_LABELS):
-    """Messages for the predictive-surprise probe (label must be the first token)."""
+def _surprise_messages(query, labels=DEFAULT_LABELS, context=""):
+    """Messages for the predictive-surprise probe (label must be the first token).
+
+    The retrieved memory context is included so the probe measures the prediction
+    error of the FULL AGENT, not the bare model (THEORY.md section 6): items the
+    memory already handles stop registering as surprising, which is what makes
+    consolidation self-limiting.
+    """
     label_str = ", ".join(labels)
+    user = f"Input: {query}\nLabel:"
+    if context:
+        user = f"{context}\n\n{user}"
     return [
         {
             "role": "system",
@@ -59,22 +69,47 @@ def _surprise_messages(query, labels=DEFAULT_LABELS):
                 f"word, one of: {label_str}. No other text."
             ),
         },
-        {"role": "user", "content": f"Input: {query}\nLabel:"},
+        {"role": "user", "content": user},
     ]
 
 
+def clean_prediction(raw, labels):
+    """Extract the predicted label from a raw CoT response.
+
+    Take the last non-empty line; if it isn't a valid label, fall back to the
+    EARLIEST occurrence of any valid label in the text (position order, not
+    label-list order — the old fallback scanned in label-list order, which
+    systematically biased truncated responses toward the first label).
+    """
+    lines = [l.strip() for l in raw.strip().split("\n") if l.strip()]
+    p = (
+        lines[-1].upper().replace(".", "").replace("'", "").replace('"', "")
+        if lines
+        else "ERROR"
+    )
+    if p not in labels:
+        up = raw.upper()
+        hits = [(up.find(lab), lab) for lab in labels if lab in up]
+        if hits:
+            p = min(hits)[1]
+    return p
+
+
 class AgenticMemoryLoop:
-    def __init__(self, db_string, openai_client=None, model="gemma3:4b", thought_model="gemma3:4b", enable_retrieval=True, enable_eigen_memory=True, labels=None):
+    def __init__(self, db_string, openai_client=None, model="gemma3:4b", thought_model="gemma3:4b", enable_retrieval=True, enable_eigen_memory=True, labels=None, static_context=""):
         self.conn = psycopg2.connect(db_string)
         # Valid label set for this task (RED/BLUE/GREEN by default; e.g.
         # HUM/LOC/NUM for TREC). Used in both the prediction and surprise prompts.
         self.labels = labels or DEFAULT_LABELS
+        # Fixed context prepended to every prediction (e.g. the true rule for an
+        # Oracle_Rule ceiling arm). Empty for normal arms.
+        self.static_context = static_context
         # If client not provided, default to local Ollama
         if openai_client is None:
             self.client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
         else:
             self.client = openai_client
-            
+
         self.model = model
         self.thought_model = thought_model
         self.enable_retrieval = enable_retrieval
@@ -102,17 +137,29 @@ class AgenticMemoryLoop:
 
 
     def run_batch(self, inputs):
-        """Runs a batch of inputs with Perceptual Surprise (Entropy) and CoT."""
+        """Runs a batch of inputs with Perceptual Surprise (Entropy) and CoT.
+
+        Returns per-item lists: raw predictions, embeddings, salience flags,
+        perceptual surprises, retrieved contexts (needed by the memory-conditional
+        surprise probe), and retrieval residuals (query embedding minus nearest
+        retrieved embedding; None when nothing was retrieved).
+        """
         predictions = []
         embeddings = []
         salience_flags = []
         perceptual_surprises = []
-        
+        contexts = []
+        residuals = []
+
         for x in inputs:
             q_vec = self._embed(x)
             embeddings.append(q_vec)
-            context = self._retrieve_context(q_vec)
-            
+            context, nn_vec = self._retrieve_context(q_vec)
+            if self.static_context:
+                context = self.static_context + ("\n\n" + context if context else "")
+            contexts.append(context)
+            residuals.append(q_vec - nn_vec if nn_vec is not None else None)
+
             # 2. Predict with CoT and Logprobs
             label_str = ", ".join(self.labels)
             prompt = f"""You are playing a pattern recognition game.
@@ -125,7 +172,7 @@ class AgenticMemoryLoop:
 
             Input: {x}
             Output:"""
-            
+
             try:
                 pred_resp = self.client.chat.completions.create(
                     model=self.model,
@@ -139,7 +186,7 @@ class AgenticMemoryLoop:
                 )
                 raw = pred_resp.choices[0].message.content
                 predictions.append(raw)
-                
+
                 # Calculate Perceptual Surprise (Entropy of the first token)
                 if pred_resp.choices[0].logprobs and pred_resp.choices[0].logprobs.content:
                     logprobs_info = pred_resp.choices[0].logprobs.content
@@ -158,28 +205,37 @@ class AgenticMemoryLoop:
                 predictions.append("ERROR")
                 perceptual_surprises.append(0.0)
                 salience_flags.append(False)
-                
-        return predictions, embeddings, salience_flags, perceptual_surprises
 
-    def learn_batch(self, inputs, raw_predictions, true_labels, embeddings, salience_flags):
-        """Calculates Predictive Surprise (NLL) and updates kernel."""
+        return predictions, embeddings, salience_flags, perceptual_surprises, contexts, residuals
+
+    def learn_batch(self, inputs, raw_predictions, true_labels, embeddings, salience_flags,
+                    contexts=None, residuals=None):
+        """Measures memory-conditional predictive surprise (NLL), stores episodes,
+        and feeds retrieval residuals to the consolidation kernel."""
+        contexts = contexts if contexts is not None else [""] * len(inputs)
+        residuals = residuals if residuals is not None else [None] * len(inputs)
         predictive_surprises = []
-        surprising_vectors = []
-        
-        for i, (query, pred, outcome, q_vec, is_salient) in enumerate(zip(inputs, raw_predictions, true_labels, embeddings, salience_flags)):
-            # Predictive Surprise: How likely was the TRUE label? We probe the model
-            # for a one-token label answer and read the logprob of the true label.
-            # The constrained prompt forces the label to be the first token (see
-            # _surprise_messages); a completion-style prompt fails on chat models.
+
+        for query, pred, outcome, q_vec, is_salient, context, residual in zip(
+            inputs, raw_predictions, true_labels, embeddings, salience_flags, contexts, residuals
+        ):
+            pred_label = clean_prediction(pred, self.labels)
+            was_correct = pred_label == outcome
+
+            # Predictive Surprise: how likely was the TRUE label *given the same
+            # memory context the agent predicted with*? Probing without the context
+            # (the old behavior) measured the bare model's difficulty, so items the
+            # memory already handled kept registering as surprising and the signal
+            # could never decline as the agent learned.
             try:
                 res = self.client.chat.completions.create(
                     model=self.model,
-                    messages=_surprise_messages(query, self.labels),
+                    messages=_surprise_messages(query, self.labels, context),
                     logprobs=True,
                     top_logprobs=10,
                     max_tokens=1
                 )
-                
+
                 if res.choices[0].logprobs and res.choices[0].logprobs.content:
                     lp_content = res.choices[0].logprobs.content[0]
                     # NLL of the true label among top-k. If the true-label token is
@@ -189,19 +245,12 @@ class AgenticMemoryLoop:
                     s_pred = _extract_nll(lp_content.top_logprobs, outcome)
                 else:
                     # Fallback to Embedding Surprise if logprobs missing
-                    # We need to extract the color from the CoT prediction
-                    lines = [l.strip() for l in pred.strip().split("\n") if l.strip()]
-                    pred_color = lines[-1].upper().replace(".", "").replace("'","").replace('"',"") if lines else "ERROR"
-                    
-                    v_pred = self._embed(pred_color)
+                    v_pred = self._embed(pred_label)
                     v_out = self._embed(outcome)
-                    s_pred = 1 - np.dot(v_pred, v_out)
-                    # Scale s_pred to bit-like range (0.5 cos -> roughly 1.0-2.0 bits)
-                    # Just keep it raw for now but ensure it triggers learning
-                    s_pred = s_pred * 5.0 
-                
+                    s_pred = (1 - np.dot(v_pred, v_out)) * 5.0
+
                 predictive_surprises.append(s_pred)
-                
+
             except Exception as e:
                 print(f"Surprise Eval Error: {e}")
                 s_pred = 2.0 # Manual high surprise fallback
@@ -211,60 +260,77 @@ class AgenticMemoryLoop:
             if is_salient or s_pred > EPISODIC_WRITE_NLL:
                 try:
                     with self.conn.cursor() as cur:
-                        cur.execute("INSERT INTO episodic_buffer (context_input, prediction, actual_outcome, surprise_score, embedding) VALUES (%s, %s, %s, %s, %s)",
-                        (query, pred, outcome, float(s_pred), q_vec.tolist()))
+                        cur.execute(
+                            "INSERT INTO episodic_buffer (context_input, prediction, actual_outcome, surprise_score, embedding, was_correct) VALUES (%s, %s, %s, %s, %s, %s)",
+                            (query, pred, outcome, float(s_pred), q_vec.tolist(), was_correct),
+                        )
                     self.conn.commit()
                 except Exception as e:
                     print(f"Logging Error: {e}")
                     self.conn.rollback()
 
-            if s_pred > EIGEN_CRYSTALLIZE_NLL: # High predictive error drives Eigen-Memory
-                surprising_vectors.append(q_vec)
+            # Feed the kernel EVERY retrieval-bearing trial, keyed on correctness —
+            # not gated on surprise. The covariance contrast needs unbiased samples
+            # of both failures and successes (THEORY.md section 3).
+            if self.enable_eigen_memory and residual is not None:
+                self.kernel.observe(
+                    embedding=q_vec,
+                    residual=residual,
+                    was_correct=was_correct,
+                    context_input=query,
+                    prediction=pred_label,
+                    actual=outcome,
+                )
 
-        # Batch Update Kernel
-        if self.enable_eigen_memory and surprising_vectors:
-             self.kernel.add_batch(surprising_vectors)
-        
+        # One consolidation check per batch: detectability + stability gated
+        # (crystallizes only past the noise edge, never on a schedule).
+        if self.enable_eigen_memory:
+            self.kernel.check_and_crystallize()
+
         print(f"Batch Predictive Surprise (Avg NLL): {np.mean(predictive_surprises):.2f}")
 
     def _retrieve_context(self, vec):
+        """Returns (context string, nearest retrieved embedding or None).
+
+        The nearest embedding is what the residual (query - retrieved) is computed
+        against — the contrastive pair the kernel consumes.
+        """
         if not self.enable_retrieval:
-            return ""
+            return "", None
 
         ctx_str = ""
+        nn_vec = None
         with self.conn.cursor() as cur:
             cur.execute("""
-                SELECT context_input, actual_outcome, surprise_score
+                SELECT context_input, actual_outcome, surprise_score, embedding
                 FROM episodic_buffer
                 ORDER BY embedding <=> %s::vector
                 LIMIT 3
             """, (vec.tolist(),))
             episodes = cur.fetchall()
-            
+
             if episodes:
                 ctx_str += "Similar Past Events:\n"
                 for ep in episodes:
                     ctx_str += f"- Input: {ep[0]} -> Result: {ep[1]} (Surprise: {ep[2]:.2f})\n"
-            
-            # Only the Eigen arm injects crystallized axioms. Gating here keeps the
-            # Control_RAG arm a pure episodic-retrieval baseline even if axioms from
-            # a prior phase linger in the table.
+                nn_vec = np.array(json.loads(episodes[0][3]))
+
+            # Only the Eigen arm injects crystallized axioms. Selection is by
+            # |projection| of the centered query onto each axiom's axis — the old
+            # cosine-to-eigenvector ORDER BY was sign-ambiguous and thus meaningless
+            # (see THEORY.md section 4). Axiom counts are small, so scoring in
+            # Python is fine.
             if self.enable_eigen_memory:
-                cur.execute("""
-                    SELECT axiom_content, strength_score
-                    FROM semantic_core
-                    ORDER BY eigen_vector <=> %s::vector
-                    LIMIT 2
-                """, (vec.tolist(),))
-                axioms = cur.fetchall()
+                cur.execute("SELECT axiom_content, eigen_vector FROM semantic_core")
+                axioms = self.kernel.score_axioms(vec, cur.fetchall())[:AXIOM_INJECT_TOP_K]
 
                 if axioms:
                     print(f"[AXIOM→] injected {len(axioms)} axiom(s) into context")
                     ctx_str += "\nRelevant Rules/Memories:\n"
-                    for ax in axioms:
-                        ctx_str += f"- RULE: {ax[0]}\n"
+                    for _, content in axioms:
+                        ctx_str += f"- RULE: {content}\n"
 
-        return ctx_str if ctx_str else "No relevant memories found."
+        return (ctx_str if ctx_str else "No relevant memories found."), nn_vec
 
     def run(self, user_query):
         # Implementation of single-run legacy-compat if needed

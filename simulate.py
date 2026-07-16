@@ -3,7 +3,7 @@ import os
 import time
 import psycopg2
 import numpy as np
-from src.eigen_memory_agent.agent import AgenticMemoryLoop
+from src.eigen_memory_agent.agent import AgenticMemoryLoop, clean_prediction
 from src.dataset import load_dataset, get_labels
 from src.config import get_db_string
 
@@ -61,24 +61,17 @@ def run_phase(phase_name, config, seed=42):
         print(f"Processing Batch {b_start // BATCH_SIZE + 1}/ {DATASET_SIZE // BATCH_SIZE}", flush=True)
         
         # Run Batch
-        raw_predictions, embeddings, salience_flags, p_surprises = agent.run_batch(inputs)
-        
-        # Learn Batch
-        agent.learn_batch(inputs, raw_predictions, true_labels, embeddings, salience_flags)
-        
-        # Score
+        raw_predictions, embeddings, salience_flags, p_surprises, contexts, residuals = \
+            agent.run_batch(inputs)
+
+        # Learn Batch (contexts feed the memory-conditional surprise probe;
+        # residuals feed the consolidation kernel)
+        agent.learn_batch(inputs, raw_predictions, true_labels, embeddings,
+                          salience_flags, contexts, residuals)
+
+        # Score with the same label-extraction the agent uses internally.
         batch_correct = 0
-        clean_preds = []
-        for raw in raw_predictions:
-            # Take the last non-empty line as the answer; if it isn't a valid
-            # label, scan the whole response for any valid label as a fallback.
-            lines = [l.strip() for l in raw.strip().split("\n") if l.strip()]
-            p = lines[-1].upper().replace(".", "").replace("'", "").replace('"', "") if lines else "ERROR"
-            if p not in LABELS:
-                up = raw.upper()
-                p = next((lab for lab in LABELS if lab in up), p)
-            clean_preds.append(p)
-            
+        clean_preds = [clean_prediction(raw, LABELS) for raw in raw_predictions]
         for p, t in zip(clean_preds, true_labels):
             if p == t: batch_correct += 1
             

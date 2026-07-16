@@ -1,148 +1,302 @@
+"""Residual-error spectral consolidation kernel (docs/THEORY.md).
+
+This replaces the original kernel, which implemented a mechanism the theory review
+disproved (PCA over raw failure embeddings, crystallize-every-batch, cosine-to-
+eigenvector axiom retrieval, an arithmetic-hint prompt). The corrected mechanism:
+
+- **Input = retrieval residuals** (query embedding minus retrieved-neighbor embedding),
+  split by outcome into failure and success buffers. Retrieval cancels the dominant
+  similarity axes; what survives in the residual is what retrieval failed to control.
+- **Estimator = contrastive eigendecomposition**: top eigenvector of
+  Cov(failure residuals) - Cov(success residuals). Successes share retrieval's leakage
+  and noise but carry no failure-specific spike, so the shared structure cancels.
+- **Trigger = detectability + stability**, not a schedule: crystallize only when the top
+  eigenvalue clears a permutation-estimated noise edge (shuffle fail/success labels; the
+  empirical analogue of the Marchenko-Pastur bulk edge) AND the direction is stable
+  across successive checks AND it has not already been crystallized.
+- **Contrast sets by projection**: the introspection prompt is seeded with failures at
+  extreme opposite projections along the detected axis, plus matched successes — and is
+  task-neutral (no arithmetic hints).
+
+Verified end-to-end on a planted world in tests/test_kernel_theory.py; unit-tested with
+fakes in tests/test_kernel_consolidation.py.
+"""
+
+import json
+
 import numpy as np
-from sklearn.decomposition import IncrementalPCA
-import psycopg2
-from psycopg2.extensions import register_adapter, AsIs
+from sklearn.decomposition import PCA
 
-def addapt_numpy_float64(numpy_float64):
-    return AsIs(numpy_float64)
-def addapt_numpy_int64(numpy_int64):
-    return AsIs(numpy_int64)
-def addapt_numpy_float32(numpy_float32):
-    return AsIs(numpy_float32)
-def addapt_numpy_int32(numpy_int32):
-    return AsIs(numpy_int32)
-def addapt_numpy_array(numpy_array):
-    return AsIs(tuple(numpy_array))
+# Working dimension for the eigenanalysis. Residuals are projected onto the top
+# R_COMPONENTS principal components of the pooled residual cloud first: the spike
+# survives any projection that keeps its neighborhood, and reducing d moves the
+# BBP detectability transition earlier (THEORY.md section 5).
+R_COMPONENTS = 50
+# Floors before the spectral machinery runs at all. Below these, even the
+# permutation edge is too noisy to trust.
+MIN_FAIL_RESIDUALS = 25
+MIN_SUCC_RESIDUALS = 10
+# Number of label-shuffles used to estimate the noise edge. The edge is the max
+# top-eigenvalue over shuffles: anything a random fail/success split can produce
+# is noise by construction.
+N_PERMUTATIONS = 5
+# The direction must persist across consecutive checks (|cos| above this) before
+# it is trusted — the failure stream is non-stationary, so a one-off axis is noise.
+STABILITY_COS = 0.95
+# A new direction too close to an already-crystallized one (|cos| above this) is
+# the same axiom again; skip it. Deduplication falls out of geometry, not bookkeeping.
+NOVELTY_COS = 0.8
+# Contrast-set sizes for the introspection prompt.
+N_CONTRAST_PER_SIDE = 3
+N_MATCHED_SUCCESSES = 3
 
-register_adapter(np.float64, addapt_numpy_float64)
-register_adapter(np.int64, addapt_numpy_int64)
-register_adapter(np.float32, addapt_numpy_float32)
-register_adapter(np.int32, addapt_numpy_int32)
-register_adapter(np.ndarray, addapt_numpy_array)
+
+def _unit(v):
+    n = np.linalg.norm(v)
+    return v / n if n > 0 else v
+
+
+def _top_contrast_eig(fail_r, succ_r):
+    """Top eigenpair of Cov(fail) - Cov(succ) in the given coordinates."""
+    C = np.cov(fail_r, rowvar=False) - np.cov(succ_r, rowvar=False)
+    w, V = np.linalg.eigh(C)
+    return float(w[-1]), V[:, -1], w
+
+
+def crystallization_prompt(side_a, side_b, successes):
+    """Task-neutral contrastive prompt. side_a/side_b: (input, predicted, actual)
+    tuples from opposite extremes of the detected axis; successes: (input, actual)."""
+    fmt_f = lambda rows: "\n".join(
+        f"- Input: {i} | I predicted: {p} | Actual: {a}" for i, p, a in rows
+    )
+    fmt_s = "\n".join(f"- Input: {i} | Actual: {a}" for i, a in successes) or "- (none available)"
+    return f"""I am a classification agent making systematic mistakes. My failures vary along a single hidden axis. Below are failures from the two opposite ends of that axis, plus similar cases I got right.
+
+Failures (side A of the axis):
+{fmt_f(side_a)}
+
+Failures (side B of the axis):
+{fmt_f(side_b)}
+
+Similar cases I got RIGHT:
+{fmt_s}
+
+Task: Inside a <thought> block, work out what single property distinguishes side A from side B, and how that property determines the correct label.
+
+Your final line must be exactly:
+RULE: [one concise, testable rule mapping the property to the labels]"""
+
 
 class EigenMemoryKernel:
-    # 3 (not 5) so that IncrementalPCA can fit on the modest number of surprising
-    # vectors a 10-trial batch typically yields; with n_components=5 the kernel
-    # would often skip updates and never crystallize axioms, starving the Eigen arm.
-    def __init__(self, db_conn, openai_client, model="gemma3:4b", n_components=3):
+    def __init__(
+        self,
+        db_conn,
+        openai_client,
+        model="gemma3:4b",
+        min_fail_residuals=MIN_FAIL_RESIDUALS,
+        min_succ_residuals=MIN_SUCC_RESIDUALS,
+        n_permutations=N_PERMUTATIONS,
+        stability_cos=STABILITY_COS,
+        novelty_cos=NOVELTY_COS,
+        rng_seed=0,
+    ):
         self.conn = db_conn
         self.client = openai_client
         self.model = model
-        self.n_components = n_components
-        self.ipca = IncrementalPCA(n_components=n_components)
-        self.fitted = False
-        self.buffer = []  # Accumulates vectors for batch updates
-        self.buffer_limit = 10
-        self.variance_threshold = 0.15
-        # Snapshots of explained_variance_ratio_ after each update, for the
-        # eigen-spectrum visualization.
+        self.min_fail_residuals = min_fail_residuals
+        self.min_succ_residuals = min_succ_residuals
+        self.n_permutations = n_permutations
+        self.stability_cos = stability_cos
+        self.novelty_cos = novelty_cos
+        self.rng = np.random.default_rng(rng_seed)
+
+        # Residual records, split by outcome. Every retrieval-bearing trial feeds
+        # these (NOT gated on surprise: the covariance contrast needs unbiased
+        # samples of both outcomes).
+        self.fail_records = []  # {residual, embedding, input, prediction, actual}
+        self.succ_records = []  # {residual, embedding, input, actual}
+
+        # Running mean of query embeddings, used to center projections when
+        # selecting axioms at inference time.
+        self._embed_sum = None
+        self._embed_count = 0
+
+        # Trigger state: last observed top direction (full space) and the
+        # directions already crystallized.
+        self.prev_direction = None
+        self.consumed_directions = []
+
+        # Telemetry: (lambda1, permutation edge) per check, and top-3 eigenvalue
+        # shares per check for the spectrum heatmap in plot_results.py.
+        self.detectability_history = []
         self.spectrum_history = []
 
-    def add_vector(self, vector):
-        """Ingests a surprise vector. If buffer full, runs diagonalization."""
-        self.buffer.append(vector)
-        if len(self.buffer) >= self.buffer_limit:
-            self.add_batch(self.buffer)
-            self.buffer = []
+    # ------------------------------------------------------------------ ingest
 
-    def add_batch(self, vectors):
-        """Ingests a batch of vectors directly into PCA and checks for crystallization."""
-        if not vectors:
-            return
+    def observe(self, embedding, residual, was_correct, context_input, prediction, actual):
+        """Record one trial's retrieval residual, keyed on outcome (correctness),
+        not on surprise."""
+        embedding = np.asarray(embedding, dtype=float)
+        residual = np.asarray(residual, dtype=float)
+        if self._embed_sum is None:
+            self._embed_sum = np.zeros_like(embedding)
+        self._embed_sum += embedding
+        self._embed_count += 1
 
-        X = np.array(vectors)
-        # IncrementalPCA.partial_fit requires n_samples >= n_components. When a
-        # batch has too few surprising vectors, skip this update rather than crash
-        # (the original broad except masked this failure).
-        if X.shape[0] < self.n_components:
-            print(
-                f"[EIGEN] skip update: {X.shape[0]} surprising vectors < "
-                f"n_components={self.n_components}"
-            )
-            return
+        rec = {
+            "residual": residual,
+            "embedding": embedding,
+            "input": context_input,
+            "prediction": prediction,
+            "actual": actual,
+        }
+        (self.succ_records if was_correct else self.fail_records).append(rec)
 
-        self.ipca.partial_fit(X)
-        self.fitted = True
-        self.spectrum_history.append(self.ipca.explained_variance_ratio_.tolist())
+    def embedding_mean(self):
+        if not self._embed_count:
+            return None
+        return self._embed_sum / self._embed_count
 
-        # After update, check if we should crystallize
-        self._check_and_crystallize()
+    # ---------------------------------------------------------------- spectral
 
-    def _check_and_crystallize(self):
-        """Checks principal components for crystallization (formerly _diagonalize logic)."""
-        components = self.ipca.components_
-        explained_variance = self.ipca.explained_variance_ratio_
+    def _reduced_residuals(self):
+        """Project pooled residuals onto their top principal components.
 
-        for i, component in enumerate(components):
-            if explained_variance[i] > 0.1:  # Significant component
-                self._crystallize_axiom(component)
-
-    def _crystallize_axiom(self, eigen_vec):
-        """Translates a mathematical eigenvector into a linguistic Rule using Contrastive Analysis."""
-        
-        # 1. Find FAILURES (High Surprise) aligned with this vector
-        with self.conn.cursor() as cur:
-            cur.execute("""
-                SELECT context_input, actual_outcome, prediction 
-                FROM episodic_buffer 
-                WHERE surprise_score > 0.3
-                ORDER BY embedding <=> %s::vector 
-                LIMIT 3
-            """, (eigen_vec.tolist(),))
-            failures = cur.fetchall()
-            
-            # 2. Find SUCCESSES (Low Surprise) aligned with this vector
-            # We want cases that are 'similar' in vector space (context) but had low surprise (correct)
-            # This helps find the "Near Misses" or the boundary.
-            cur.execute("""
-                SELECT context_input, actual_outcome 
-                FROM episodic_buffer 
-                WHERE surprise_score < 0.1
-                ORDER BY embedding <=> %s::vector 
-                LIMIT 3
-            """, (eigen_vec.tolist(),))
-            successes = cur.fetchall()
-        
-        if not failures: 
-            return
-
-        # 3. Synthesize Rule with Contrast
-        failure_text = "\n".join([f"- Input: {f[0]} | I predicted: {f[2]} | Actual: {f[1]}" for f in failures])
-        success_text = "\n".join([f"- Input: {s[0]} | Actual: {s[1]}" for s in successes])
-        
-        prompt = f"""
-        I am making specific mistakes. Help me find the hidden rule.
-        
-        Here are examples where I FAILED:
-        {failure_text}
-        
-        Here are similar examples where I SUCCEEDED:
-        {success_text}
-        
-        Task: Analyze the difference between these two groups inside <thought> blocks. 
-        Then, formulate the SINGLE specific rule or characteristic that makes the 'Failure' cases different from the 'Success' cases.
-        Check for arithmetic properties (primes, divisibility, parity, range).
-        
-        Your final response should be:
-        <thought> [Your step-by-step reasoning] </thought>
-        RULE: [Concise description of the rule]
+        Returns (fail_reduced, succ_reduced, basis) with basis rows orthonormal in
+        the full space, so directions can be mapped back via basis.T @ v.
         """
-        
+        F = np.array([r["residual"] for r in self.fail_records])
+        S = np.array([r["residual"] for r in self.succ_records])
+        pooled = np.vstack([F, S])
+        r = min(R_COMPONENTS, pooled.shape[0] - 1, pooled.shape[1])
+        pca = PCA(n_components=r).fit(pooled)
+        basis = pca.components_
+        return F @ basis.T, S @ basis.T, basis
+
+    def _permutation_edge(self, F_red, S_red):
+        """Noise edge: max top-eigenvalue over random fail/success relabelings."""
+        pooled = np.vstack([F_red, S_red])
+        n_fail = len(F_red)
+        edge = 0.0
+        for _ in range(self.n_permutations):
+            idx = self.rng.permutation(len(pooled))
+            lam, _, _ = _top_contrast_eig(pooled[idx[:n_fail]], pooled[idx[n_fail:]])
+            edge = max(edge, lam)
+        return edge
+
+    def check_and_crystallize(self):
+        """Run once per batch: eigenanalysis + the detectability/stability/novelty
+        gates. Crystallizes at most one axiom per call."""
+        if (
+            len(self.fail_records) < self.min_fail_residuals
+            or len(self.succ_records) < self.min_succ_residuals
+        ):
+            return
+
+        F_red, S_red, basis = self._reduced_residuals()
+        lam1, v_red, w = _top_contrast_eig(F_red, S_red)
+        edge = self._permutation_edge(F_red, S_red)
+        v_full = _unit(basis.T @ v_red)
+
+        self.detectability_history.append((lam1, edge))
+        top3 = np.sort(np.clip(w, 0, None))[::-1][:3]
+        total = top3.sum()
+        self.spectrum_history.append((top3 / total if total > 0 else top3).tolist())
+
+        detectable = lam1 > edge
+        stable = self.prev_direction is not None and (
+            abs(float(v_full @ self.prev_direction)) > self.stability_cos
+        )
+        novel = all(
+            abs(float(v_full @ c)) < self.novelty_cos for c in self.consumed_directions
+        )
+        self.prev_direction = v_full
+
+        print(
+            f"[EIGEN] lam1={lam1:.3f} edge={edge:.3f} "
+            f"({'detectable' if detectable else 'below edge'}, "
+            f"{'stable' if stable else 'unstable'}, {'novel' if novel else 'consumed'}) "
+            f"fail={len(self.fail_records)} succ={len(self.succ_records)}"
+        )
+
+        if detectable and stable and novel:
+            self._crystallize(v_full, strength=lam1 / edge if edge > 0 else 1.0)
+
+    # ----------------------------------------------------------- crystallization
+
+    def _contrast_sets(self, v_full):
+        """Failures at extreme opposite projections along v_full, plus successes
+        matched to them by embedding similarity."""
+        proj = np.array([float(r["residual"] @ v_full) for r in self.fail_records])
+        order = np.argsort(proj)
+        side_a = [self.fail_records[i] for i in order[:N_CONTRAST_PER_SIDE]]
+        side_b = [self.fail_records[i] for i in order[::-1][:N_CONTRAST_PER_SIDE]]
+
+        successes = []
+        if self.succ_records:
+            succ_emb = np.array([_unit(r["embedding"]) for r in self.succ_records])
+            used = set()
+            for f in side_a + side_b:
+                sims = succ_emb @ _unit(f["embedding"])
+                for j in np.argsort(sims)[::-1]:
+                    if j not in used:
+                        used.add(int(j))
+                        successes.append(self.succ_records[j])
+                        break
+                if len(successes) >= N_MATCHED_SUCCESSES:
+                    break
+        return side_a, side_b, successes
+
+    def _crystallize(self, v_full, strength=1.0):
+        """Translate the detected axis into a linguistic rule via contrastive
+        introspection, and store it with its (full-space) direction."""
+        side_a, side_b, successes = self._contrast_sets(v_full)
+        prompt = crystallization_prompt(
+            [(r["input"], r["prediction"], r["actual"]) for r in side_a],
+            [(r["input"], r["prediction"], r["actual"]) for r in side_b],
+            [(r["input"], r["actual"]) for r in successes],
+        )
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": prompt}],
             )
             axiom = response.choices[0].message.content
-            
-            # 4. Store in Semantic Core
+
             with self.conn.cursor() as cur:
-                cur.execute("""
+                cur.execute(
+                    """
                     INSERT INTO semantic_core (axiom_content, eigen_vector, strength_score)
                     VALUES (%s, %s, %s)
-                """, (axiom, eigen_vec.tolist(), 1.0))
+                    """,
+                    (axiom, v_full.tolist(), float(strength)),
+                )
             self.conn.commit()
+            self.consumed_directions.append(v_full)
             print(f"[AXIOM+] {axiom[:60].strip()}...")
-            
         except Exception as e:
             print(f"Failed to crystallize axiom: {e}")
+
+    # ------------------------------------------------------------- inference use
+
+    def score_axioms(self, query_embedding, axiom_rows):
+        """Relevance of stored axioms to a query: |projection| of the centered
+        query embedding onto each axiom's axis. Sign-invariant, unlike the old
+        cosine-to-eigenvector ranking (an eigenvector's sign is arbitrary).
+
+        axiom_rows: iterable of (axiom_content, eigen_vector) where eigen_vector
+        may be a pgvector text literal or a sequence. Returns rows sorted by
+        descending relevance as (score, axiom_content).
+        """
+        mu = self.embedding_mean()
+        q = np.asarray(query_embedding, dtype=float)
+        centered = q - mu if mu is not None else q
+        scored = []
+        for content, vec in axiom_rows:
+            if isinstance(vec, str):
+                vec = json.loads(vec)
+            v = np.asarray(vec, dtype=float)
+            scored.append((abs(float(centered @ v)), content))
+        scored.sort(key=lambda t: t[0], reverse=True)
+        return scored

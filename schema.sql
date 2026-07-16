@@ -9,9 +9,13 @@ CREATE TABLE IF NOT EXISTS episodic_buffer (
     actual_outcome TEXT,
     surprise_score FLOAT,           -- The "Loss" (0.0 to 1.0)
     embedding vector(768),         -- Situation vector
+    was_correct BOOLEAN,            -- Outcome: did the agent's prediction match?
     model_state_hash VARCHAR(64),   -- Version control for agent logic
     created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Idempotent upgrade for databases created before was_correct existed.
+ALTER TABLE episodic_buffer ADD COLUMN IF NOT EXISTS was_correct BOOLEAN;
 
 -- Tier 3: Semantic Core (The "Eigen-Memories")
 CREATE TABLE IF NOT EXISTS semantic_core (
