@@ -16,6 +16,9 @@ multi-seed experiment on **two different substrates**:
    Baseline (80% vs 75%)** — proving the rig can detect a real memory benefit — but **eigen-memory
    does not beat plain RAG (75% vs 80%)**; the crystallized axioms add nothing over raw exemplars.
 
+A third experiment — a purpose-built label-flip task run later with the corrected kernel — is
+summarized in its own section below (spoiler: RAG won again, and the reason is a new gate, C5).
+
 Across both substrates, **eigen-memory never beats plain RAG.** The two failures fail *differently*,
 and that's the finding: on the number-game the substrate hides the rule; on TREC the baseline is
 already high (a ceiling effect) and a single retrieved example settles each question, so there is
@@ -93,6 +96,17 @@ some genuinely name the rule concepts (`prime`, `divisible`, `5`); others are mo
 right structure, but injection is noisy and unvalidated — a wrong or defeatist axiom poisons the
 context. Validating axioms before injection is listed in next steps.
 
+A later theory pass ([docs/THEORY.md](docs/THEORY.md)) explains the unevenness quantitatively:
+the kernel crystallized every batch on ~10 vectors in 768 dimensions — far below the spectral
+detectability threshold — so the "direction" behind each axiom was close to a random vector,
+and the contrast examples handed to the introspection prompt were effectively arbitrary. An LLM
+confabulates a confident rule from arbitrary examples; garbage axioms are the predicted
+signature of crystallizing below that threshold, not a prompt-quality accident.
+
+(The kernel has since been reworked to the corrected mechanism — contrastive PCA over
+retrieval residuals with a detectability-gated trigger, THEORY.md §8. All results in this
+document are from the **old** kernel and are kept as the record of what it produced.)
+
 ### Memory cost
 
 ![Memory cost](memory_cost.png)
@@ -165,6 +179,21 @@ specific conclusion that **crystallizing failures into axioms doesn't beat retri
 unless a single exemplar is insufficient.** That is a precise, defensible negative — and it points
 exactly at where the idea *would* have to be tested to win (see next section).
 
+## The third act: the purpose-built flip task, and the C5 gate (2026-07-14)
+
+The task the next-steps list below calls for **was subsequently built and run** — a label-flip
+task engineered to sit in the one regime where rule-compression should win (rule
+embedding-visible, probe AUC 0.947; one exemplar *not* enough, copy ceiling m = 0.567). The
+corrected kernel (contrastive residual PCA, detectability-gated — [docs/THEORY.md](docs/THEORY.md))
+crystallized exactly **one** axiom, on the correct planted axis, and **still lost to RAG**
+(held-out: RAG 0.533, Eigen 0.356, Baseline 0.222; single seed, n=45). The reason is the run's
+real discovery: an Oracle arm with the *true* rule in context scored **0.467 — below the 0.567
+copy ceiling**. With this 4B model, applying a rule pays less than copying a neighbor, so
+rule-memory was unwinnable regardless of axiom quality (**C5**, a fifth pre-registerable gate;
+suggestive at this sample size, not significant). Full design, guardrail history, and results:
+[docs/C1_C3_TASK.md](docs/C1_C3_TASK.md) and [docs/BLOG_POST.md](docs/BLOG_POST.md); raw data in
+`comparison_results.flip.json`.
+
 ## The real finding: the experiment cannot answer the question it asks
 
 The most valuable result of this project is a **critique of its own experimental design**.
@@ -220,8 +249,10 @@ and a pre-registered decision rule — is written up in
 
 This architecture recombines three well-established ideas (see [docs/PRIOR_ART.md](docs/PRIOR_ART.md)):
 
-- **Surprise-gated storage** ← Prioritized Experience Replay (Schaul 2015), curiosity as
-  prediction error (Pathak 2017).
+- **Surprise-gated storage** ← **Titans** (Behrouz et al. 2024) — the direct inspiration:
+  surprise-gated, lossy, test-time memory, compressed here into legible rules instead of MLP
+  weights. Ancestors: Prioritized Experience Replay (Schaul 2015), curiosity as prediction
+  error (Pathak 2017).
 - **Consolidating experience into natural-language rules** ← Generative Agents reflection
   (Park 2023), Reflexion (Shinn 2023), ExpeL insights (Zhao 2023).
 - **PCA over representations to extract directions** ← Representation Engineering (Zou 2023).
@@ -232,18 +263,17 @@ baseline — consistent with what I see here.
 
 ## What I'd do next
 
-The TREC arm moved the bottleneck: the substrate is no longer the problem (RAG works there), so
-the open question is whether eigen-axioms can beat exemplars on a task where **one exemplar isn't
-enough** (condition C3). That's where I'd go next:
+The first item on the old version of this list — *build a task where C1 holds and C3 fails* —
+**was done** (the flip task above). C5 moved the bottleneck again: the memory isn't the problem,
+the executor is. The unified roadmap (same list as README and BLOG_POST):
 
-- **Pick a task that fails for RAG, not for the substrate**: a *compositional* rule over short
-  texts (so generalizing the rule beats looking up the nearest neighbor) with a low enough zero-shot
-  baseline to leave headroom — i.e. one where C1 holds **and** C3 holds. TREC satisfied C1 but not C3.
-- **Held-out test split with memory frozen** — measure generalization, not memorization (the design
-  in [docs/VALID_EXPERIMENT.md](docs/VALID_EXPERIMENT.md)).
-- **More seeds + a paired significance test** for a statistically powered claim (current ±0.15 seed
-  variance swamps the RAG→Eigen gap).
-- **Validate axiom quality before injection** — TREC showed axioms firing 170× without helping; a
-  weak or off-topic axiom is worse context than a concrete neighbor. Measure correctness before
-  injecting, and consider injecting axioms *only* when no good exemplar exists.
-- **Ablate the two surprise signals** (entropy vs NLL) to see which, if either, is load-bearing.
+- **Swap in a stronger executor.** Rerun the flip task with a model that can apply a rule better
+  than it copies — cheap, because the detectability gate makes crystallization rare by design.
+- **Run the flip task at ≥5 seeds** — the C5 result is one seed at demonstration scale; the
+  protocol pre-registers more, and ±0.15 seed variance swamps single-seed gaps.
+- **Ablate the surprise gate itself** (gated vs store-everything, and entropy vs NLL) — the
+  banner mechanism has never been isolated as a variable; note the corrected kernel already
+  feeds crystallization *ungated* residuals by design.
+- **Validate axiom quality before injection** — TREC showed axioms firing 170× without helping,
+  and the flip run's wrong-half axiom poisoned the report cells (0.20). Measure correctness
+  before injecting, and consider injecting axioms *only* when no good exemplar exists.

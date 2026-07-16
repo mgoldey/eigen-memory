@@ -25,9 +25,13 @@ For eigen-memory to beat RAG, all four must hold at once:
 - **C2 — Success requires generalizing to unseen inputs.** Evaluation must hit inputs the agent
   never stored, so "look up the nearest past episode" is insufficient and an *abstracted* rule
   is what carries.
-- **C3 — Episodes are individually expensive or redundant.** Storing every case must be costly
-  (long traces, large volume, noisy duplicates), so compressing many into one rule is a real
-  saving, not just a flourish.
+- **C3 — Exemplars can't carry the task.** Retrieving stored cases must be insufficient: one
+  exemplar must not settle the answer (operationally: nearest-neighbor label-copy accuracy `m`
+  near chance — see [THEORY.md](THEORY.md) §7), or coverage must be sparse or costly to build
+  (long traces, long-tail inputs, noisy duplicates), so compressing many episodes into one rule
+  is a real gain rather than a flourish. These are the same fact at two scales: copy accuracy
+  is a coverage phenomenon — it rises as the episode buffer densifies — so rule-compression is
+  a hedge against sparse coverage.
 - **C4 — The governing rules are few, stable, and reusable.** A handful of axioms must cover a
   long tail of cases, and they must not churn so fast that a crystallized rule is stale before
   it is used.
@@ -145,5 +149,6 @@ is false — where every instance is effectively its own isolated fact (the numb
 the rule is real but invisible to the embedding (also the number-game). Knowing *which* world
 you're in, before reaching for the mechanism, is the whole game.
 
-See also: [FINDINGS.md](../FINDINGS.md) (why it lost here), [VALID_EXPERIMENT.md](VALID_EXPERIMENT.md)
+See also: [FINDINGS.md](../FINDINGS.md) (why it lost here), [THEORY.md](THEORY.md) (the corrected
+mechanism and the two-statistic regime map), [VALID_EXPERIMENT.md](VALID_EXPERIMENT.md)
 (how to test it fairly), [PRIOR_ART.md](PRIOR_ART.md) (the lineage).

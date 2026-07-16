@@ -4,27 +4,39 @@ How this project's "eigen-memory" agent relates to published work. The agent com
 ideas, each with substantial prior art. The contribution here is the *combination* and the
 *honest experiment*, not any single mechanism.
 
-> Sourcing note: papers below were surfaced by a multi-source literature search and
-> cross-checked against the author's own knowledge of the field. They are well-known,
-> canonical works. The search's adversarial-verification pass was interrupted, so treat the
-> framing as a literature map rather than a peer-reviewed survey.
+> Sourcing note: citations were hand-verified against the arXiv abstracts. Treat this as a
+> literature map, not an exhaustive survey.
 
 ## A. Surprise / prediction-error–gated memory (the "what to remember" signal)
 
-The idea of using prediction error to decide what is worth storing or replaying is well
-established in reinforcement learning:
-
+- **Titans** (Behrouz, Zhong & Mirrokni, 2024, [arXiv:2501.00663](https://arxiv.org/abs/2501.00663)) —
+  **the direct inspiration for this project's surprise mechanism.** A neural long-term memory
+  trained *at test time*: each input's "momentary surprise" (the gradient of an
+  associative-memory loss with respect to the memory module's parameters) is blended with a
+  momentum-like "past surprise" and an adaptive forgetting gate; high-surprise inputs reshape
+  the memory. The store is an MLP's weights — lossy, fixed-capacity, opaque. Scales past
+  2M-token contexts, outperforming Transformers and modern linear RNNs on long-context tasks.
+  Nuance: only the memory *writes* happen at test time — the projections and all three gates
+  are meta-learned during pretraining, so Titans is a from-scratch architecture, not a
+  bolt-on for a frozen model. (This project is, precisely, the inference-time retrofit of the
+  same economics.)
 - **Prioritized Experience Replay** (Schaul et al., 2015, [arXiv:1511.05952](https://arxiv.org/abs/1511.05952)) —
-  replays transitions in proportion to their TD-error (a prediction-error signal) instead of
-  uniformly. Directly analogous to this project's *predictive surprise* (NLL) gate on writes.
+  the RL ancestor: replays transitions in proportion to their TD-error (a prediction-error
+  signal) instead of uniformly.
 - **Curiosity-driven exploration** (Pathak et al., 2017, [arXiv:1705.05363](https://arxiv.org/abs/1705.05363)) —
-  formalizes curiosity as the prediction error of a learned forward model, used as intrinsic
-  reward. The canonical "prediction-error = surprise" formulation this project echoes.
+  curiosity as the prediction error of a learned forward model; the canonical
+  "prediction-error = surprise" formulation.
 
-**How this project differs:** the surprise signal is read directly from an LLM's logits
-(entropy of next-token distribution = perceptual surprise; NLL of the true label =
-predictive surprise) rather than from a learned RL value/forward model. The gate decides
-*storage*, not *replay priority*.
+**How this project differs:** it keeps Titans' economics (surprise decides what survives; the
+memory is lossy) and swaps both the signal and the substrate. The signal is read directly from
+an LLM's logits (entropy = perceptual surprise; NLL of the true label = predictive surprise) —
+a training-free, black-box analogue of Titans' gradient surprise, usable with any hosted model.
+The substrate is not parameters but **language**: surprising episodes are lossily compressed
+into legible natural-language rules (section B for that lineage), which trades Titans'
+free-of-charge memory application (a forward pass) for auditability and portability — see
+THEORY.md and the C5 executor gate in C1_C3_TASK.md for what that trade costs. The
+memory-conditional surprise probe (surprise measured with memory in context, so solved items
+stop registering) is this project's analogue of Titans' forgetting gate.
 
 ## B. Consolidating experience into natural-language rules (the "memory consolidation" step)
 
@@ -53,15 +65,28 @@ writes the rule is standard.
 ## C. Spectral / PCA methods on representations (the "eigen" part)
 
 - **Representation Engineering** (Zou et al., 2023, [arXiv:2310.01405](https://arxiv.org/abs/2310.01405)) —
-  extracts concept *directions* from population-level LLM activations (often via PCA over
-  contrastive pairs) to read and steer high-level concepts. Establishes PCA-over-representations
-  as a concept-extraction tool.
+  extracts concept *directions* from LLM activations. Crucially, its reading method (LAT) runs
+  PCA over **difference vectors of contrastive stimulus pairs**, never over raw activations —
+  the differencing is what isolates the concept from dominant nuisance variance.
+- **Contrastive PCA** (Abid, Zhang, Bagaria & Zou, 2018, *Nature Communications* 9:2134,
+  [arXiv:1709.06716](https://arxiv.org/abs/1709.06716)) — finds directions of high variance in
+  a target dataset *relative to a background dataset*, surfacing structure ordinary PCA misses.
+- **The BBP phase transition** (Baik, Ben Arous & Péché, 2005, *Ann. Probab.* 33(5); real-valued
+  analogue Baik & Silverstein 2006) — for spiked covariance models, the top sample eigenvector
+  carries information about a planted direction only past a critical sample count; below it, it
+  is asymptotically uncorrelated noise. The principled answer to *when* an eigen-direction is
+  real enough to act on (implemented as a permutation-estimated edge).
 
-**How this project differs — and an honest caveat:** RepE applies PCA to *model activations*
-(rich internal states). This project applies PCA to *embedding vectors of inputs* (here, single
-integers). That is a much weaker substrate — see the embedding-substrate caveat in
-[FINDINGS.md](../FINDINGS.md). The "eigen" framing should be read as *PCA-as-a-trigger*, not
-as eigendecomposition carrying the semantic load.
+**How this project differs — and an honest correction:** the original kernel applied PCA to
+*raw input embeddings* of surprising items — skipping RepE's differencing step — and a theory
+review showed that mechanism is blind to a sub-dominant attribute (failure-conditioning
+mildly *suppresses* it; see [THEORY.md](THEORY.md) §1). The corrected kernel is LAT/cPCA
+transported to retrieval: contrastive PCA over **retrieval residuals** (query − retrieved
+exemplar), with failure residuals as target and success residuals as background, triggered
+past the BBP detectability threshold. A literature check found no established method applying
+PCA to retrieval residuals for error analysis or rule induction (adjacent work — "PCA-RAG,"
+residual quantization — shares vocabulary but targets compression/indexing), so that framing
+appears to be this project's contribution; LAT and cPCA are its defensible ancestors.
 
 ## D. Does "eigen-memory" already exist as a term?
 
@@ -80,8 +105,8 @@ result is a small, local data point in that broader pattern — see [FINDINGS.md
 
 ## One-line positioning for the README
 
-> This project recombines three established ideas — prediction-error–gated storage (à la
-> Prioritized Experience Replay), reflection-style consolidation into natural-language rules
-> (à la Generative Agents / ExpeL), and PCA-based concept extraction (à la Representation
-> Engineering) — into a single local agent, and runs a controlled experiment to test whether
-> the combination beats plain retrieval.
+> Titans compresses an agent's surprises into neural weights; this project compresses them into
+> **legible rules** — surprise-gated storage (read from logits, not gradients), spectral
+> detection of shared failure structure (contrastive PCA over retrieval residuals, gated by a
+> random-matrix detectability edge), and LLM introspection that writes the rule — then runs
+> controlled experiments to find exactly where that legible compression beats plain retrieval.
