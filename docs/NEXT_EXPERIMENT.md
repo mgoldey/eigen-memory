@@ -102,9 +102,17 @@ exemplar-copying dominates rule-following, and no rule-memory architecture can p
 > **C-stale** (exemplars only, labeled under the outdated rule, no hint they're stale)
 > replaces C as the realized copy arm — that is what post-shift retrieval actually serves;
 > (2) rule-format sensitivity is real and consistent (prose ≥ table by 0.12–0.23 on both
-> models) — good news, since crystallized axioms are prose sentences. gemma4:12b remains
-> untested (requires an Ollama upgrade); qwen3.5:9b is the provisional executor pending a
-> C-stale run.
+> models) — good news, since crystallized axioms are prose sentences.
+>
+> **Executor designated (2026-07-16, post-Ollama-upgrade).** gemma4:12b passes the amended
+> gate decisively: R (prose) = 0.983, **RC = 0.983** (zero stale-exemplar seduction — RC ≡ R,
+> vs gemma4-8B's −0.233 and qwen3.5:9b's −0.100), **C-stale = 0.450** with McNemar
+> p < 0.0001 (R > CS). The CS number doubles as an empirical validation of the Rule-Shift
+> premise: a copy arm served stale exemplars realizes ~0.45 while a rule-following executor
+> realizes ~0.98 — that 0.53 gap is the headroom the experiment plays in. One sharp caveat
+> for the axiom-injection template: gemma4:12b scores 0.517 on *table*-formatted rules vs
+> 0.983 on prose — rules must be injected as prose sentences. G0 is satisfied; next stop G1
+> (generator probe) and the pilot seed.
 
 **Split the roles**: crystallizer = biggest model (fires rarely — quality is nearly free);
 executor = cheapest RFμ-passing model (thousands of calls); surprise probe can stay small

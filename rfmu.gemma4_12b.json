@@ -1,0 +1,24 @@
+{
+  "model": "gemma4:12b",
+  "seed": 7,
+  "n_items": 60,
+  "polarity_match_rate": 0.8,
+  "acc": {
+    "R_table": 0.5166666666666667,
+    "R_prose": 0.9833333333333333,
+    "R": 0.9833333333333333,
+    "C": 0.9166666666666666,
+    "CS": 0.45,
+    "RC": 0.9833333333333333
+  },
+  "r_best_format": "prose",
+  "mcnemar_p_R_gt_C": 0.109375,
+  "mcnemar_p_R_gt_CS": 2.3283064365386963e-10,
+  "strict_gate": false,
+  "amended_gates": {
+    "rule": true,
+    "conflict": true,
+    "significance": true
+  },
+  "qualified_amended": true
+}
