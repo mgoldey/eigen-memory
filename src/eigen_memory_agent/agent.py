@@ -138,7 +138,9 @@ class AgenticMemoryLoop:
 
     def __init__(self, db_string, openai_client=None, *, model="gemma3:4b",
                  thought_model="gemma3:4b", enable_retrieval=True,
-                 enable_eigen_memory=True, labels=None, static_context=""):
+                 enable_eigen_memory=True, labels=None, static_context="",
+                 extra_body=None, retrieval_k=3, recency_rerank=False,
+                 axiom_replaces_exemplars=False, kernel_kwargs=None):
         self.conn = psycopg2.connect(db_string)
         # Valid label set for this task (RED/BLUE/GREEN by default; e.g.
         # HUM/LOC/NUM for TREC). Used in both the prediction and surprise prompts.
@@ -156,7 +158,20 @@ class AgenticMemoryLoop:
         self.thought_model = thought_model
         self.enable_retrieval = enable_retrieval
         self.enable_eigen_memory = enable_eigen_memory
-        self.kernel = EigenMemoryKernel(self.conn, self.client, model=self.thought_model)
+        # Extra request-body fields for every chat call (e.g.
+        # {"reasoning_effort": "none"}: on Ollama's OpenAI-compat endpoint a
+        # thinking-family model otherwise burns the whole completion budget on
+        # a reasoning stream and returns EMPTY content — RFμ bug five).
+        self.extra_body = extra_body
+        # Retrieval policy knobs for the Rule-Shift arms: top-k episodes,
+        # whether to present them newest-first (the Recency_RAG kill arm), and
+        # the pre-registered Treatment injection policy — a selected axiom
+        # REPLACES the exemplar block instead of being appended to it.
+        self.retrieval_k = retrieval_k
+        self.recency_rerank = recency_rerank
+        self.axiom_replaces_exemplars = axiom_replaces_exemplars
+        self.kernel = EigenMemoryKernel(self.conn, self.client, model=self.thought_model,
+                                        extra_body=extra_body, **(kernel_kwargs or {}))
         # An episode is written when its predictive surprise clears chance-level
         # NLL for this label set (ln 3 ≈ 1.10 for three classes). The old fixed
         # 1.0 threshold sat BELOW chance, making the gate nearly write-everything.
@@ -221,6 +236,7 @@ class AgenticMemoryLoop:
                     # of reasoning per call (slow, and long CoT tends to drift on a
                     # 4B model). A short budget keeps the final RED/BLUE/GREEN line.
                     max_tokens=PREDICTION_MAX_TOKENS,
+                    extra_body=self.extra_body,
                 )
                 raw = pred_resp.choices[0].message.content
                 predictions.append(raw)
@@ -274,6 +290,7 @@ class AgenticMemoryLoop:
                     max_tokens=1,
                     temperature=0.0,
                     seed=LLM_SEED,
+                    extra_body=self.extra_body,
                 )
 
                 if res.choices[0].logprobs and res.choices[0].logprobs.content:
@@ -347,22 +364,31 @@ class AgenticMemoryLoop:
         if not self.enable_retrieval:
             return "", None
 
-        ctx_str = ""
+        episode_str = ""
+        axiom_str = ""
         nn_vec = None
         with self.conn.cursor() as cur:
             cur.execute("""
-                SELECT context_input, actual_outcome, surprise_score, embedding
+                SELECT context_input, actual_outcome, surprise_score, embedding, created_at
                 FROM episodic_buffer
                 ORDER BY embedding <=> %s::vector
-                LIMIT 3
-            """, (vec.tolist(),))
+                LIMIT %s
+            """, (vec.tolist(), self.retrieval_k))
             episodes = cur.fetchall()
 
             if episodes:
-                ctx_str += "Similar Past Events:\n"
-                for ep in episodes:
-                    ctx_str += f"- Input: {ep[0]} -> Result: {ep[1]} (Surprise: {ep[2]:.2f})\n"
+                # The residual is always against the nearest-by-similarity
+                # episode, regardless of how the context is presented.
                 nn_vec = np.array(json.loads(episodes[0][3]))
+                if self.recency_rerank:
+                    shown = sorted(episodes, key=lambda ep: ep[4], reverse=True)
+                    episode_str += ("Similar Past Events (most recent first — "
+                                    "labels may have changed over time):\n")
+                else:
+                    shown = episodes
+                    episode_str += "Similar Past Events:\n"
+                for ep in shown:
+                    episode_str += f"- Input: {ep[0]} -> Result: {ep[1]} (Surprise: {ep[2]:.2f})\n"
 
             # Only the Eigen arm injects crystallized axioms. Selection is by
             # |projection| of the centered query onto each axiom's axis — the old
@@ -375,11 +401,18 @@ class AgenticMemoryLoop:
 
                 if axioms:
                     print(f"[AXIOM→] injected {len(axioms)} axiom(s) into context")
-                    ctx_str += "\nRelevant Rules/Memories:\n"
+                    axiom_str += "\nRelevant Rules/Memories:\n"
                     for _, content in axioms:
                         # content is the stored "RULE: ..." line (the kernel
                         # strips the CoT scaffolding before the INSERT).
-                        ctx_str += f"- {content}\n"
+                        axiom_str += f"- {content}\n"
+
+        if axiom_str and self.axiom_replaces_exemplars:
+            # Pre-registered Rule-Shift injection policy: once a rule is
+            # trusted enough to inject, it REPLACES the exemplars — mixing a
+            # current rule with stale exemplars is exactly the RFμ RC failure.
+            episode_str = ""
+        ctx_str = episode_str + axiom_str
 
         return (ctx_str if ctx_str else "No relevant memories found."), nn_vec
 

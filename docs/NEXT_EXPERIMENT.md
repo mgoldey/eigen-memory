@@ -152,6 +152,33 @@ post-shift adaptation trials → freeze → 90 held-out post-shift items. 5 seed
 - **G4**: every fired axiom scored against the planted post-shift rule *before* unblinding
   accuracy.
 
+> **Amendment (2026-07-17, pre-pilot, from the G1/G2 measurement — guardrail_shift.py on 5
+> seeds).** G1 passes everywhere (probe-AUC 0.980–0.989). Strict G2 **fails on every seed**
+> (aggregate copy_acc 0.500–0.644 vs ≤ 0.45) — and the per-row split shows the ≤ 0.45 bar
+> was an arithmetic oversight in this pre-registration, not a property of the data: only the
+> request row shifts, so report queries stay copyable forever (0.67–0.98 measured) while
+> request-copying craters exactly as intended (0.00–0.35). An aggregate below 0.45 is
+> unreachable *by construction* while retrieval works at all. Amended G2, adopted before any
+> pilot spend: **G2a** copy_acc on requests (the shifted row) ≤ 0.45 [passes 5/5], and
+> **G2b** the Recency_RAG policy ceiling (top-5, newest wins) ≤ executor R − 0.10 = 0.883,
+> so a correct axiom retains decision-rule headroom over the kill arm [passes 5/5; ceiling
+> 0.689–0.778]. The strict number is kept in every guardrail.shift.<seed>.json as g2_strict.
+>
+> **Amendment (2026-07-17, pre-pilot, by analysis).** G3's pre-registered estimator
+> (query-embedding **cPCA**) is provably blind to the failure structure this design creates.
+> Post-shift, failures concentrate on one polarity and successes on the other — a
+> **location** difference between the groups. Covariance-style contrasts (cPCA included)
+> subtract per-group means and cannot see it; second-moment and pooled-centering variants
+> cancel it too, because the polarity clusters sit symmetrically about the global mean.
+> Estimator amended to a **two-sample mean contrast** (statistic = ‖mean(fail) −
+> mean(succ)‖², direction = the mean-difference axis) under the *identical* permutation-edge
+> / stability / novelty gates. Two supporting kernel settings for the non-stationary stream:
+> a sliding **window of 60** trials (without forgetting, 100 pre-shift records swamp the 60
+> post-shift ones — the legible analogue of Titans' forgetting gate), and a sample-size-aware
+> **stability threshold of 0.5** (the gate-ROC showed cos 0.95 is unreachable below ~8× edge;
+> 0.5 is still p ≈ 2×10⁻⁴ against the random-direction null in the r = 50 working space).
+> G3's firing criterion stays as pre-registered: detectable on 3 consecutive checks.
+
 **Decision rule**: primary endpoint Eigen vs **Recency_RAG**, held-out post-shift,
 item-level paired across 5 seeds; win = Δ ≥ +0.10, one-sided p < 0.05, AND Eigen >
 Control_RAG, AND Oracle > copy ceiling. Secondary: Eigen within 0.05 of Oracle.

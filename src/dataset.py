@@ -299,6 +299,56 @@ def load_flip(split="train", num_samples=100, seed=42):
     return data
 
 
+# --- The Rule-Shift task (docs/NEXT_EXPERIMENT.md §5) -----------------------
+# Flip-generator surface text reused verbatim, with two pre-registered changes:
+# (1) the rule is GLOBAL in polarity (one mapping, no per-topic table -> the
+#     failure axis is rank-1 by construction);
+# (2) at trial N_SHIFT_PRE the REQUEST row flips; the report row never changes.
+# Train/test vocabulary stays disjoint (Guardrail 2 inherited from flip).
+
+N_SHIFT_PRE = 100    # pre-shift trials (negative-control window)
+N_SHIFT_POST = 60    # post-shift adaptation trials
+N_SHIFT_HELDOUT = 90 # frozen held-out post-shift items (test vocab)
+
+
+def shift_rules(seed=42):
+    """The seed's (pre, post) global rules. All three labels are in play:
+    the report row is shared, the request row flips to the third label."""
+    rng = random.Random(f"shift-lut-{seed}")
+    report, pre_req, post_req = rng.sample(FLIP_LABELS, 3)
+    return ({"request": pre_req, "report": report},
+            {"request": post_req, "report": report})
+
+
+def shift_oracle_text(seed=42):
+    """The POST-shift rule as PROSE for the Oracle arm — RFμ measured prose
+    ≫ table on the designated executor (gemma4:12b: 0.983 vs 0.517)."""
+    _, post = shift_rules(seed)
+    return ("Current routing rule (authoritative, as of today): messages that"
+            " request action or describe unresolved work are labeled"
+            f" {post['request']}; messages that report completed work or status"
+            f" are labeled {post['report']}.")
+
+
+def load_shift(seed=42):
+    """The Rule-Shift streams: (trials, heldout). Trials = 100 pre-shift + 60
+    post-shift adaptation items in train vocab, labeled era-correct (this is
+    exactly what a RAG buffer will contain — stale labels included). Heldout =
+    90 test-vocab items labeled under the post rule only."""
+    pre, post = shift_rules(seed)
+    trials = load_flip(split="train", num_samples=N_SHIFT_PRE + N_SHIFT_POST, seed=seed)
+    heldout = load_flip(split="test", num_samples=N_SHIFT_HELDOUT, seed=seed)
+    for i, d in enumerate(trials):
+        phase = "pre" if i < N_SHIFT_PRE else "post"
+        d["label"] = (pre if phase == "pre" else post)[d["meta"]["polarity"]]
+        d["meta"]["phase"] = phase
+        d["meta"]["trial"] = i
+    for d in heldout:
+        d["label"] = post[d["meta"]["polarity"]]
+        d["meta"]["phase"] = "heldout"
+    return trials, heldout
+
+
 def load_dataset(task="number", split="train", num_samples=100, seed=42):
     """Unified entry point. task='number' (default), 'trec', or 'flip'."""
     if task == "number":

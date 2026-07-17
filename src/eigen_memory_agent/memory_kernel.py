@@ -65,6 +65,15 @@ def _top_contrast_eig(fail_r, succ_r):
     return float(w[-1]), V[:, -1], w
 
 
+def _mean_contrast(fail_r, succ_r):
+    """Two-sample mean contrast: statistic = squared distance between the group
+    means, direction = the mean-difference axis. The shift-regime estimator —
+    a location difference between failures and successes that a covariance
+    contrast cannot see (see __init__ notes on contrast_on)."""
+    d = fail_r.mean(axis=0) - succ_r.mean(axis=0)
+    return float(d @ d), _unit(d)
+
+
 def crystallization_prompt(side_a, side_b, successes):
     """Task-neutral contrastive prompt. side_a/side_b: (input, predicted, actual)
     tuples from opposite extremes of the detected axis; successes: (input, actual)."""
@@ -103,6 +112,10 @@ class EigenMemoryKernel:
         stability_cos=STABILITY_COS,
         novelty_cos=NOVELTY_COS,
         rng_seed=0,
+        extra_body=None,
+        window=None,
+        contrast_on="residual",
+        consecutive_detections=1,
     ):
         self.conn = db_conn
         self.client = openai_client
@@ -113,6 +126,31 @@ class EigenMemoryKernel:
         self.stability_cos = stability_cos
         self.novelty_cos = novelty_cos
         self.rng = np.random.default_rng(rng_seed)
+        # Extra request-body fields for the crystallization call (e.g.
+        # {"reasoning_effort": "none"} to keep a thinking model's final answer
+        # in .content on Ollama's OpenAI-compat endpoint).
+        self.extra_body = extra_body
+        # Rule-Shift additions (docs/NEXT_EXPERIMENT.md §5; defaults preserve
+        # the static-task behavior exactly):
+        #  window — keep only the most recent `window` observed trials in the
+        #    contrast buffers. A non-stationary stream needs forgetting: without
+        #    it, 100 pre-shift records swamp the 60 post-shift ones. This is
+        #    the legible-memory analogue of Titans' forgetting gate.
+        #  contrast_on — "residual" (static tasks: variance contrast of
+        #    retrieval residuals) or "embedding_mean" (shift tasks: two-sample
+        #    MEAN contrast of query embeddings). The 2026-07-17 amendment: the
+        #    pre-registered query-embedding cPCA is variance-based and provably
+        #    blind to the shift's failure structure — failures concentrate on
+        #    one polarity and successes on the other, a LOCATION difference
+        #    that symmetric antipodal clusters cancel out of every covariance
+        #    contrast. Same permutation-edge / stability / novelty gates.
+        #  consecutive_detections — checks that must be detectable in a row
+        #    before crystallizing (G3 pre-registers 3; 1 = old behavior).
+        self.window = window
+        self.contrast_on = contrast_on
+        self.consecutive_detections = consecutive_detections
+        self._t = 0
+        self._detect_streak = 0
 
         # Residual records, split by outcome. Every retrieval-bearing trial feeds
         # these (NOT gated on surprise: the covariance contrast needs unbiased
@@ -147,14 +185,20 @@ class EigenMemoryKernel:
         self._embed_sum += embedding
         self._embed_count += 1
 
+        self._t += 1
         rec = {
             "residual": residual,
             "embedding": embedding,
             "input": context_input,
             "prediction": prediction,
             "actual": actual,
+            "t": self._t,
         }
         (self.succ_records if was_correct else self.fail_records).append(rec)
+        if self.window:
+            cutoff = self._t - self.window
+            self.fail_records = [r for r in self.fail_records if r["t"] > cutoff]
+            self.succ_records = [r for r in self.succ_records if r["t"] > cutoff]
 
     def embedding_mean(self):
         if not self._embed_count:
@@ -169,8 +213,9 @@ class EigenMemoryKernel:
         Returns (fail_reduced, succ_reduced, basis) with basis rows orthonormal in
         the full space, so directions can be mapped back via basis.T @ v.
         """
-        F = np.array([r["residual"] for r in self.fail_records])
-        S = np.array([r["residual"] for r in self.succ_records])
+        key = "embedding" if self.contrast_on == "embedding_mean" else "residual"
+        F = np.array([r[key] for r in self.fail_records])
+        S = np.array([r[key] for r in self.succ_records])
         pooled = np.vstack([F, S])
         r = min(R_COMPONENTS, pooled.shape[0] - 1, pooled.shape[1])
         pca = PCA(n_components=r).fit(pooled)
@@ -184,7 +229,10 @@ class EigenMemoryKernel:
         edge = 0.0
         for _ in range(self.n_permutations):
             idx = self.rng.permutation(len(pooled))
-            lam, _, _ = _top_contrast_eig(pooled[idx[:n_fail]], pooled[idx[n_fail:]])
+            if self.contrast_on == "embedding_mean":
+                lam, _ = _mean_contrast(pooled[idx[:n_fail]], pooled[idx[n_fail:]])
+            else:
+                lam, _, _ = _top_contrast_eig(pooled[idx[:n_fail]], pooled[idx[n_fail:]])
             edge = max(edge, lam)
         return edge
 
@@ -198,7 +246,11 @@ class EigenMemoryKernel:
             return
 
         F_red, S_red, basis = self._reduced_residuals()
-        lam1, v_red, w = _top_contrast_eig(F_red, S_red)
+        if self.contrast_on == "embedding_mean":
+            lam1, v_red = _mean_contrast(F_red, S_red)
+            w = np.array([lam1])
+        else:
+            lam1, v_red, w = _top_contrast_eig(F_red, S_red)
         edge = self._permutation_edge(F_red, S_red)
         v_full = _unit(basis.T @ v_red)
 
@@ -208,6 +260,7 @@ class EigenMemoryKernel:
         self.spectrum_history.append((top3 / total if total > 0 else top3).tolist())
 
         detectable = lam1 > edge
+        self._detect_streak = self._detect_streak + 1 if detectable else 0
         stable = self.prev_direction is not None and (
             abs(float(v_full @ self.prev_direction)) > self.stability_cos
         )
@@ -218,12 +271,13 @@ class EigenMemoryKernel:
 
         print(
             f"[EIGEN] lam1={lam1:.3f} edge={edge:.3f} "
-            f"({'detectable' if detectable else 'below edge'}, "
+            f"({'detectable' if detectable else 'below edge'}, streak={self._detect_streak}, "
             f"{'stable' if stable else 'unstable'}, {'novel' if novel else 'consumed'}) "
             f"fail={len(self.fail_records)} succ={len(self.succ_records)}"
         )
 
-        if detectable and stable and novel:
+        if (detectable and self._detect_streak >= self.consecutive_detections
+                and stable and novel):
             self._crystallize(v_full, strength=lam1 / edge if edge > 0 else 1.0)
 
     # ----------------------------------------------------------- crystallization
@@ -268,6 +322,7 @@ class EigenMemoryKernel:
                 temperature=0.0,
                 seed=0,
                 max_tokens=400,
+                extra_body=self.extra_body,
             )
             raw = response.choices[0].message.content or ""
         except Exception as e:

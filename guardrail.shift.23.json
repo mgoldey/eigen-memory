@@ -1,0 +1,25 @@
+{
+  "seed": 23,
+  "embedding_model": "embeddinggemma:latest",
+  "pre_rule": {
+    "request": "ESCALATE",
+    "report": "FILE"
+  },
+  "post_rule": {
+    "request": "DEFER",
+    "report": "FILE"
+  },
+  "probe_auc_polarity": 0.9866479925303455,
+  "copy_acc": 0.5777777777777777,
+  "copy_acc_requests": 0.32,
+  "copy_acc_reports": 0.9,
+  "m_polarity": 0.8222222222222222,
+  "nn_from_pre_window": 0.5666666666666667,
+  "recency_copy_k5": 0.7777777777777778,
+  "executor_r": 0.9833333333333333,
+  "g1_pass": true,
+  "g2_strict_pass": false,
+  "g2a_pass": true,
+  "g2b_pass": true,
+  "g2_amended_pass": true
+}
