@@ -1,0 +1,21 @@
+{
+  "model": "gemma4:latest",
+  "seed": 7,
+  "n_items": 60,
+  "polarity_match_rate": 0.8,
+  "acc": {
+    "R_table": 0.8833333333333333,
+    "R_prose": 1.0,
+    "R": 1.0,
+    "C": 0.9333333333333333,
+    "RC": 0.7666666666666667
+  },
+  "r_best_format": "prose",
+  "mcnemar_p_R_gt_C": 0.0625,
+  "gates": {
+    "margin": false,
+    "conflict": false,
+    "significance": false
+  },
+  "qualified": false
+}

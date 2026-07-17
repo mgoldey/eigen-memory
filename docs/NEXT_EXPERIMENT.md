@@ -89,6 +89,23 @@ Candidate order (stop at first pass): gemma3:12b → qwen3.5:9b → qwen3.5:27b 
 If nothing local passes, that is itself the publishable boundary: "below ~X B parameters,
 exemplar-copying dominates rule-following, and no rule-memory architecture can pay."
 
+> **Amendment (2026-07-16, after the first two RFμ runs — `run_rfmu.py`,
+> `rfmu.<model>.json`).** The C condition's premise broke on contact: with a global-polarity
+> rule, 5 correctly-labeled exemplars are enough for a strong model to *induce* the rule, so
+> C measures few-shot induction, not nearest-neighbor copying — gemma4-8B scored C = 0.933
+> and qwen3.5:9b C = 0.917, far above the geometric copy ceiling (~0.8 polarity match), which
+> makes the R − C ≥ +0.10 margin gate nearly unpassable for any model strong enough to matter.
+> Both candidates: R (prose rule) = 1.000. RC (rule + stale exemplars): gemma4-8B 0.767
+> (**fails** — trusts stale exemplars ~25% of the time), qwen3.5:9b 0.900 (passes at the
+> boundary). Two consequences, adopted before any main-run spend: (1) the Rule-Shift-relevant
+> qualification is **R ≥ 0.90 AND RC ≥ R − 0.10 AND McNemar(R > C-stale) p < .05**, where
+> **C-stale** (exemplars only, labeled under the outdated rule, no hint they're stale)
+> replaces C as the realized copy arm — that is what post-shift retrieval actually serves;
+> (2) rule-format sensitivity is real and consistent (prose ≥ table by 0.12–0.23 on both
+> models) — good news, since crystallized axioms are prose sentences. gemma4:12b remains
+> untested (requires an Ollama upgrade); qwen3.5:9b is the provisional executor pending a
+> C-stale run.
+
 **Split the roles**: crystallizer = biggest model (fires rarely — quality is nearly free);
 executor = cheapest RFμ-passing model (thousands of calls); surprise probe can stay small
 (needs varied NLL, not competence). "Write with a big model rarely, read with a small model

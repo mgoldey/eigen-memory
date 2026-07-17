@@ -1,0 +1,21 @@
+{
+  "model": "qwen3.5:9b",
+  "seed": 7,
+  "n_items": 60,
+  "polarity_match_rate": 0.8,
+  "acc": {
+    "R_table": 0.7666666666666667,
+    "R_prose": 1.0,
+    "R": 1.0,
+    "C": 0.9166666666666666,
+    "RC": 0.9
+  },
+  "r_best_format": "prose",
+  "mcnemar_p_R_gt_C": 0.03125,
+  "gates": {
+    "margin": false,
+    "conflict": true,
+    "significance": true
+  },
+  "qualified": false
+}
