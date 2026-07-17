@@ -1,0 +1,104 @@
+{
+  "seed": 2,
+  "n_train": 100,
+  "n_test": 45,
+  "arms": {
+    "Baseline": {
+      "train_accs": [],
+      "test_acc": 0.28888888888888886,
+      "test_by_polarity": {
+        "request": 0.4,
+        "report": 0.2
+      },
+      "n_axioms": 0,
+      "buffer_size": 0,
+      "embed_failures": 0,
+      "nll_missing_rate": null,
+      "parse_fallback_rate": 0.0
+    },
+    "Oracle_Rule": {
+      "train_accs": [],
+      "test_acc": 0.5333333333333333,
+      "test_by_polarity": {
+        "request": 0.3,
+        "report": 0.72
+      },
+      "n_axioms": 0,
+      "buffer_size": 0,
+      "embed_failures": 0,
+      "nll_missing_rate": null,
+      "parse_fallback_rate": 0.0
+    },
+    "Control_RAG": {
+      "train_accs": [
+        0.3,
+        0.6,
+        0.7,
+        0.4,
+        0.3,
+        0.3,
+        0.3,
+        0.6,
+        0.5,
+        0.8
+      ],
+      "test_acc": 0.6222222222222222,
+      "test_by_polarity": {
+        "request": 0.8,
+        "report": 0.48
+      },
+      "n_axioms": 0,
+      "buffer_size": 47,
+      "embed_failures": 0,
+      "nll_missing_rate": 0.02,
+      "parse_fallback_rate": 0.006896551724137931
+    },
+    "Treatment_Eigen": {
+      "train_accs": [
+        0.3,
+        0.6,
+        0.7,
+        0.4,
+        0.3,
+        0.3,
+        0.3,
+        0.6,
+        0.5,
+        0.8
+      ],
+      "test_acc": 0.6222222222222222,
+      "test_by_polarity": {
+        "request": 0.8,
+        "report": 0.48
+      },
+      "n_axioms": 0,
+      "buffer_size": 47,
+      "embed_failures": 0,
+      "nll_missing_rate": 0.02,
+      "parse_fallback_rate": 0.006896551724137931,
+      "detectability": [
+        [
+          0.08018799094599662,
+          0.09302951638537732
+        ],
+        [
+          0.06546295014062452,
+          0.07855429455862302
+        ],
+        [
+          0.06206959499944296,
+          0.07709978629752043
+        ],
+        [
+          0.05478366560196916,
+          0.06737266074342017
+        ],
+        [
+          0.052519185177869916,
+          0.055373216499570416
+        ]
+      ],
+      "axioms": []
+    }
+  }
+}

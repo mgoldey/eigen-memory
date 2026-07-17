@@ -1,0 +1,15 @@
+{
+  "seed": 18,
+  "n_probe": 300,
+  "n_store": 100,
+  "n_query": 45,
+  "embedding_model": "embeddinggemma:latest",
+  "probe_polarity": 0.95,
+  "probe_topic": 1.0,
+  "probe_label": 0.62,
+  "m_polarity": 0.8888888888888888,
+  "nn_topic_match": 0.4666666666666667,
+  "copy_acc": 0.5777777777777777,
+  "c1_pass": true,
+  "c3_pass": false
+}

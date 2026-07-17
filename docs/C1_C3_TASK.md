@@ -135,10 +135,21 @@ are measurable with just the generator and the embedding model — no LLM, no ag
 - **probe-AUC(B) ≥ 0.8** — train a linear probe on sentence embeddings to predict B alone. If
   the probe can't recover B, **C1 is false** — no spectral method has a chance either. Stop,
   redesign.
-- **m ∈ [0.45, 0.60]** — build a buffer of stored examples **at the size the agent will
-  actually have** (~150, per the protocol), retrieve each held-out item's nearest neighbor, and
-  measure the polarity-match rate m (= copy accuracy, under the flip rule). If m is high, RAG
-  wins by lookup and there is nothing for a rule to add (the conjunction trap, TREC's regime).
+- **m ∈ [0.45, 0.60]** — store the seed's actual train set, retrieve each **held-out** item's
+  nearest neighbor, and measure the polarity-match rate m plus the 3-class label-copy accuracy
+  (`copy_acc`, the honest C5 ceiling). If m is high, RAG wins by lookup and there is nothing
+  for a rule to add (the conjunction trap, TREC's regime).
+
+  > **Post-mortem (2026-07-16):** the original guardrail measured m with *train-split* queries
+  > against a 150-item uniform store — the wrong queries at the wrong buffer size. Measured
+  > under protocol conditions (held-out queries, disjoint vocabulary, ≤100-item train store),
+  > cross-split neighbors match on **polarity itself**: m = 0.73–0.89 on every seed, with topic
+  > match collapsing to 0.38–0.47. **C3 actually fails for this task on every seed** — the
+  > within-split measurement was an artifact. The general lesson (C1 ⇒ ¬C3 on static tasks:
+  > whatever attribute generalizes across the split dominates cross-split similarity, and
+  > that's the rule attribute) is formalized in [NEXT_EXPERIMENT.md](NEXT_EXPERIMENT.md).
+  > `guardrail_flip.py` now measures under protocol conditions and writes
+  > `guardrail.flip.<seed>.json` for the aggregator.
 
 Do **not** substitute a variance-share check for the m measurement: the simulation showed a B
 at 1/10th the topic scale — thoroughly sub-dominant — still yielding **m = 0.87** against a
@@ -193,14 +204,15 @@ RAG and eigen irrelevant and collapsing all arms into noise.
   comparison is moot. Do *not* gate Baseline against RAG: this task is built to make RAG
   unreliable, so RAG may legitimately land at or below Baseline, and a Baseline-vs-RAG gate
   would abort a healthy run.
-- **Executor gate (C5) — discovered by the first live run:** require **Oracle > m**, the
-  guardrail-1 copy ceiling. If the model executes the *true* rule worse than blind
+- **Executor gate (C5) — discovered by the first live run, replicated on all four corrected
+  seeds:** require **Oracle > copy_acc**, the guardrail-1 3-class label-copy ceiling (NOT the
+  2-way polarity m — different scales). If the model executes the *true* rule worse than blind
   neighbor-copying scores, then rule-based memory cannot beat RAG **regardless of axiom
-  quality**, and the H1 comparison is decided before training starts. Measured for gemma3:4b
-  on seed 42: Oracle 0.467 < m 0.567 — gate FAILS; the predicted (and observed) outcome is
-  RAG ≈ m and Eigen ≤ RAG. This gate costs one test-phase pass (~45 calls) and one number you
-  already have. The fix is a stronger executor (at least for the crystallization/prediction
-  steps), not more seeds.
+  quality**, and the H1 comparison is decided before training starts. Measured for gemma3:4b,
+  corrected 4-seed run: Oracle 0.411 ± 0.103 vs ceilings 0.578–0.600 — **gate fails on every
+  seed** (paired Oracle − ceiling = −0.178 ± 0.093). This gate costs one test-phase pass (~45
+  calls) and one number you already have. The fix is a qualified executor (see the RFμ
+  microbenchmark in [NEXT_EXPERIMENT.md](NEXT_EXPERIMENT.md)), not more seeds.
 - **Per-cell error breakdown:** the eigen win must concentrate on the **anti-correlated cells** (the
   same-topic-opposite-label confusions). A *uniform* gain across cells is a generic prompt-quality
   effect, not a C3 win.
@@ -279,25 +291,31 @@ Two kinds of change, and it is no longer honest to say "only the dataset changes
    an hour, not a week.
 3. Only then the kernel rework and arms.
 
-## First live run (2026-07-14, seed 42, demonstration scale)
+## Live runs
 
-Built (`TASK=flip`, `run_flip_experiment.py`) and run once at demo scale (100 train / 45
-held-out, single gated seed, gemma3:4b). Held-out: Baseline 0.222, Oracle 0.467, **RAG 0.533**,
-Eigen 0.356 — **H1 not supported**, with a fully-instrumented diagnosis (raw numbers in
-`comparison_results.flip.json`): the guardrail's m (0.567) predicted RAG's score; the kernel
-crystallized exactly one axiom and it named the planted polarity axis (the spectral stage
-worked); the 4B introspection model collapsed the conditional flip-rule into a marginal one,
-which poisoned the report cells; and the executor gate above (Oracle < m) shows the comparison
-was unwinnable for rule-memory with this model — which is the run's real finding. Write-up:
-[BLOG_POST.md](BLOG_POST.md).
+**First run (2026-07-14, seed 42) — later found compromised.** Held-out: Baseline 0.222,
+Oracle 0.467, RAG 0.533, Eigen 0.356; the kernel appeared to crystallize one correct-axis
+axiom. A review pass then found two silent bugs (full-CoT stored as axioms and injected into
+the Treatment arm; multi-token labels flattening the surprise probe to a constant for 2 of 3
+classes) plus the guardrail measurement error documented above. Archived in
+`results_prefix_bug/` as the record.
 
-## Why this is the right task to build next
+**Corrected run (2026-07-16, 4 seeds {42, 2, 18, 23}, temperature 0, health telemetry).**
+Held-out means ± std: Baseline 0.289 ± 0.048, Oracle 0.411 ± 0.103, **RAG 0.600 ± 0.101**,
+Eigen 0.617 ± 0.106. **H1 not supported** — 0–1 axioms per seed; on 3/4 seeds zero axioms and
+Eigen ≡ RAG prediction-for-prediction; the one fired axiom (seed 18) named the polarity axis
+with an inverted mapping. C5 fails 4/4 (see the executor gate above). Aggregate:
+`comparison_results.flip.aggregate.json`; per-seed `comparison_results.flip.<seed>.json` +
+`guardrail.flip.<seed>.json`. Write-up: [BLOG_POST.md](BLOG_POST.md).
 
-The prior two experiments were *uninterpretable* (number-game) and *ceiling-limited*
-single-exemplar (TREC). This one removes every structural excuse: the substrate can see the rule
-(C1), the test demands generalization (C2), and — the new ingredient — **copy accuracy is pinned
-at chance by measurement, and every copy error costs the full label** (C3), so retrieval cannot
-win by lookup or majority vote. With the corrected kernel it is also the first design where the
-*mechanism* has no excuse: the spectral stage provably finds the B axis in this geometry
-(THEORY.md), so a loss would actually *falsify* the hypothesis instead of merely indicting the
-task or the implementation.
+## What this task turned out to prove
+
+The design goal — remove every structural excuse — succeeded, just not in the intended
+direction. The substrate can see the rule (C1 held, probe 0.95–0.97); the test demands
+generalization (C2 held, disjoint banks); but the corrected measurement shows **C3 cannot be
+made to hold at the same time as C1 on a static task** (the post-mortem above), and C5 shows
+the executor couldn't have cashed in a perfect axiom anyway. A loss with all excuses removed
+would have falsified the hypothesis; instead the run falsified the *task family* — static
+single-session rule tasks — and produced the two gates (corrected-C3, C5) plus the gate-ROC
+calibration that the successor design inherits. That successor (Rule-Shift: break copying with
+time instead of geometry) is pre-registered in [NEXT_EXPERIMENT.md](NEXT_EXPERIMENT.md).

@@ -140,6 +140,19 @@ examples**. The garbage and "just guess randomly" axioms observed in the real ru
 predicted signature of crystallizing below the detectability threshold, not a mystery about
 prompt quality.
 
+**Measured operating characteristic of the full gate (gate_roc.py, 2026-07-16).** Driving the
+actual kernel over planted rank-1 contrasts at controlled multiples of its own permutation
+edge (n_fail ∈ {50, 100, 200}, 20 replicates/cell): full-gate false-positive rate **0.00** at
+pure noise (the edge alone leaks ~5% ≈ 1/21, exactly the max-over-20-permutations expectation;
+the stability check removes the rest); detectability turns on at 1× the edge (100%); but the
+**full** gate fires only from ~8×, because the cross-check direction cosine (0.84 / 0.89 /
+0.94 / 0.96 at snr 1/2/4/8) crosses the 0.95 stability threshold between 4× and 8×. So the
+stability gate — not the eigenvalue edge — is the binding constraint at realistic n: the
+compound gate trades an ~8× detection margin for measured-zero false positives. Implication
+for future designs: to detect weaker real axes, scale the stability threshold to the expected
+estimator wobble at the current sample count (a sample-size-aware cosine), rather than
+lowering the edge. Raw sweep: `gate_roc.json`.
+
 The corrected trigger — which finally earns the "eigen" in eigen-memory:
 
 > Crystallize a direction only when **(a)** its eigenvalue in the contrast matrix `C` exceeds

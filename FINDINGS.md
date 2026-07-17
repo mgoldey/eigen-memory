@@ -179,20 +179,43 @@ specific conclusion that **crystallizing failures into axioms doesn't beat retri
 unless a single exemplar is insufficient.** That is a precise, defensible negative — and it points
 exactly at where the idea *would* have to be tested to win (see next section).
 
-## The third act: the purpose-built flip task, and the C5 gate (2026-07-14)
+## The third act: the purpose-built flip task, C5, and bugs four and five (2026-07-14/16)
 
 The task the next-steps list below calls for **was subsequently built and run** — a label-flip
-task engineered to sit in the one regime where rule-compression should win (rule
-embedding-visible, probe AUC 0.947; one exemplar *not* enough, copy ceiling m = 0.567). The
-corrected kernel (contrastive residual PCA, detectability-gated — [docs/THEORY.md](docs/THEORY.md))
-crystallized exactly **one** axiom, on the correct planted axis, and **still lost to RAG**
-(held-out: RAG 0.533, Eigen 0.356, Baseline 0.222; single seed, n=45). The reason is the run's
-real discovery: an Oracle arm with the *true* rule in context scored **0.467 — below the 0.567
-copy ceiling**. With this 4B model, applying a rule pays less than copying a neighbor, so
-rule-memory was unwinnable regardless of axiom quality (**C5**, a fifth pre-registerable gate;
-suggestive at this sample size, not significant). Full design, guardrail history, and results:
-[docs/C1_C3_TASK.md](docs/C1_C3_TASK.md) and [docs/BLOG_POST.md](docs/BLOG_POST.md); raw data in
-`comparison_results.flip.json`.
+task engineered to sit in the one regime where rule-compression should win. The story arrived
+in two acts, and the second is this document's thesis eating its own tail:
+
+**The first multi-seed run was compromised.** A review pass found two more silent bugs: the
+crystallizer stored the model's full chain-of-thought as the "axiom" and injected ~1.2k chars
+of it into every Treatment context (sabotaging the arm under test), and the surprise probe's
+token matching failed on multi-token labels, flattening NLL to a constant for 2 of 3 classes —
+**the third instance of the constant-surprise bug class** this document exists to warn about.
+Both were verified live before fixing (NLLs 7.0/0.01/7.0 → 4.57/0.01/11.55 after a one-line
+prefix match). The compromised run is archived in `results_prefix_bug/`.
+
+**The corrected run (4 seeds, temperature 0, health counters in every artifact):** held-out
+Baseline 0.289 ± 0.048, Oracle 0.411 ± 0.103, RAG 0.600 ± 0.101, Eigen 0.617 ± 0.106 — but
+the Eigen–RAG "difference" is one seed's single wrong-mapping axiom; on the other three seeds
+**zero axioms crystallized and the arms produced identical predictions**. H1 not supported.
+Three replicated findings:
+
+1. **C5 (4/4 seeds):** the Oracle arm — true rule pasted in context — scores below the
+   nearest-neighbor label-copy ceiling on every seed (paired −0.178 ± 0.093). A 4B executor
+   applies a rule worse than blind copying scores; rule-memory could not win regardless of
+   axiom quality.
+2. **C1 ⇒ ¬C3:** the guardrail originally measured copying with the wrong queries. Measured
+   under protocol conditions, cross-split neighbors match on the rule attribute itself
+   (polarity 0.73–0.89) — making a rule embedding-visible makes it retrieval-visible, so the
+   "eigen window" was a measurement artifact. See [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md).
+3. **The zero axioms are calibrated behavior:** a synthetic ROC of the actual gate
+   (`gate_roc.py`) shows a 0.00 false-positive rate and full-gate firing only past ~8× the
+   noise edge (the stability check binds, not the detectability edge). The flip task's
+   residual failures are high-rank per-topic confusions — nothing rank-1 to find.
+
+Meanwhile the positive mechanism claim was re-verified on the final code: 120 TREC trials →
+exactly one axiom, and it is true (`trec_verify.42.json`). Full design and guardrail history:
+[docs/C1_C3_TASK.md](docs/C1_C3_TASK.md) and [docs/BLOG_POST.md](docs/BLOG_POST.md); raw data
+`comparison_results.flip.<seed>.json` + aggregate.
 
 ## The real finding: the experiment cannot answer the question it asks
 
@@ -264,16 +287,19 @@ baseline — consistent with what I see here.
 ## What I'd do next
 
 The first item on the old version of this list — *build a task where C1 holds and C3 fails* —
-**was done** (the flip task above). C5 moved the bottleneck again: the memory isn't the problem,
-the executor is. The unified roadmap (same list as README and BLOG_POST):
+**was done**, and running it honestly proved such a static task cannot exist (C1 ⇒ ¬C3, above).
+The unified roadmap now lives in [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md); the short
+version:
 
-- **Swap in a stronger executor.** Rerun the flip task with a model that can apply a rule better
-  than it copies — cheap, because the detectability gate makes crystallization rare by design.
-- **Run the flip task at ≥5 seeds** — the C5 result is one seed at demonstration scale; the
-  protocol pre-registers more, and ±0.15 seed variance swamps single-seed gaps.
+- **The Rule-Shift experiment** — break copying with *time* instead of geometry: the rule
+  changes mid-run, stale exemplars keep retrieving perfectly and answering wrongly, the
+  re-crystallized rule stays current. Pre-registered gates include a recency-weighted-RAG
+  control arm (the baseline that could kill it) and a rank-1 failure axis by construction.
+- **RFμ, a 60-item executor microbenchmark** (rule vs copy vs conflicting contexts) to qualify
+  a model before burning a run — gemma3:4b already failed C5, so candidates start at 12B.
+- **A sample-size-aware stability threshold** — the gate-ROC shows the fixed 0.95 cosine
+  demands ~8× the noise edge; principled earlier detection means scaling the threshold to the
+  expected estimator wobble at the current n, not lowering the edge.
 - **Ablate the surprise gate itself** (gated vs store-everything, and entropy vs NLL) — the
   banner mechanism has never been isolated as a variable; note the corrected kernel already
   feeds crystallization *ungated* residuals by design.
-- **Validate axiom quality before injection** — TREC showed axioms firing 170× without helping,
-  and the flip run's wrong-half axiom poisoned the report cells (0.20). Measure correctness
-  before injecting, and consider injecting axioms *only* when no good exemplar exists.

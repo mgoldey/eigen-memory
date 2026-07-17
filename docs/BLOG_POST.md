@@ -126,23 +126,30 @@ axiom's axis — sign-invariant, unlike the old cosine ranking.
 
 ## Live: the compressor refuses to compress noise
 
-First outing of the rebuilt kernel, on the two old tasks, with a falsifiable prediction each.
-(These two were live smoke runs — the telemetry below is quoted from their run logs; the flip
-experiment in the next section is the archived one, `comparison_results.flip.json`.)
+First outing of the rebuilt kernel, on the two old tasks, with a falsifiable prediction each:
 
 - **Number-game, 80 trials** (arithmetic rule, invisible to text embeddings): the gate should
   stay closed. It did — **zero axioms**, where the old kernel emitted 15–20.
-- **TREC, 120 trials** (question-type rule, embedding-visible): a real-but-weak axis might
-  clear the edge. The telemetry shows λ1 hovering at the permutation edge across four checks —
-  held (unstable), held (below edge), **crystallized** (detectable and stable), then the
-  novelty gate marked the axis consumed. One axiom, strength 1.03:
+- **TREC, 120 trials** (question-type rule, embedding-visible): a real axis should clear the
+  edge. It did — exactly one axiom. Re-verified end-to-end on the final, fully-debugged code
+  (`run_trec_verify.py`, archived in `trec_verify.42.json`): one axiom, strength 1.13, zero
+  missing-token probes, and the rule is true:
 
-> *"If the question asks for a quantity or measurement, predict 'NUM'; if the question asks for
-> a location, person, or named entity, predict 'LOC'."*
+> *"Questions requiring numerical answers should be labeled NUM, and questions requiring
+> location or descriptive answers should be labeled LOC."*
 
-One hundred twenty trials, lossily compressed to twenty-seven words — and the words are a
-**correct rule about the task's hidden structure**, written by a 4B model. That is the artifact
-this architecture exists to produce.
+One hundred twenty trials, lossily compressed to twenty words — and the words are a **correct
+rule about the task's hidden structure**, written by a 4B model. That is the artifact this
+architecture exists to produce.
+
+And the refusal side is now measured, not asserted. A synthetic ROC drives the *actual*
+kernel over planted rank-1 contrasts at controlled multiples of its own noise edge
+(`gate_roc.py`): false-positive rate **0.00** at pure noise (the permutation edge alone leaks
+the predicted ~5%; the stability check mops it to zero), detection at 1× the edge, full-gate
+firing from ~8×. The binding constraint isn't the eigenvalue edge at all — it's **stability**:
+under realistic noise, the estimated direction only reproduces across checks at |cos| > 0.95
+once the spike is far above the floor. The gate buys its zero false positives with a large
+detection margin. Remember that number; it's about to matter.
 
 ## Where rule-compression should beat retrieval — building the test
 
@@ -164,39 +171,61 @@ Speech-act is a strong sentence-embedding feature; the trick is the probe-vs-var
 asymmetry — shrink the attribute's share of pairwise *distance* while a supervised probe still
 recovers it.
 
-## The showdown, and the number that may have decided it in advance
+## The showdown, in two acts
 
-100 training messages, then 45 held-out with memory frozen. Pre-registered win condition:
-Eigen > max(RAG, Baseline). Plus an **Oracle arm** — no memory, the true flip-table pasted
-into context — as the headroom ceiling:
+**Act one: the run I almost published.** 100 training messages, 45 held-out with memory
+frozen, four seeds, four arms — including an **Oracle arm** (no memory, the true flip-table
+pasted into context) as the headroom ceiling. The first multi-seed run produced a seductive
+story: RAG won, but the compressor had "found the planted polarity axis live" and written a
+correct-axis rule, and the Oracle sat below the copy ceiling. I had the narrative half-drafted.
 
-| Arm | Held-out | requests | reports |
-|---|---:|---:|---:|
-| Baseline | 0.222 | 0.30 | 0.16 |
-| Oracle_Rule (true rule in context) | 0.467 | 0.35 | 0.56 |
-| **Control_RAG** | **0.533** | 0.60 | 0.48 |
-| Treatment_Eigen | 0.356 | 0.55 | 0.20 |
+Then a review pass over the experiment code found two more silent bugs — in a project whose
+founding lesson was already "three bugs made surprise a constant." **Bug four:** the
+crystallizer stored the model's entire chain-of-thought (~1.2k characters of `<thought>`
+rambling) as the "axiom" and injected it verbatim into every Treatment context — sabotaging
+the very arm under test. **Bug five:** the surprise probe required the whole label inside one
+token, and the tokenizer splits ESCALATE into `ES`-something — so for two of three classes,
+"surprise" had quietly become a constant *again* (instance number three of the same bug
+class). Verified live before fixing: NLLs of 7.0/0.01/7.0 became 4.57/0.01/11.55 after a
+one-line prefix match. The compromised run is archived in `results_prefix_bug/`, because the
+archaeology *is* the project.
 
-**RAG won; H1 not supported.** But look at the instrument panel rather than the scoreboard:
+**Act two: the corrected run** (4 seeds, temperature 0, health counters in every artifact —
+missing-token rate 0–2%, parse fallbacks ~1%, buffers 47–58/100 showing the write gate
+actually gating):
 
-- The guardrail's m (0.567) predicted RAG's score (0.533) before the run. The regime map works.
-- The compressor found the planted axis, live: one axiom, strength 1.12, after two correctly
-  held checks — *"if the input describes a completed action or a status update … DEFER;
-  otherwise ESCALATE."* Completed-action-vs-needs-attention **is** the request/report polarity.
-  Right axis.
-- Wrong *function*: the 4B model collapsed the per-topic flip into one global mapping (and
-  dropped the third label). The wrong half poisoned the report cells: 0.20 (n=25), below blind
-  copying.
-- And the most consequential number — though on one seed and 45 held-out items it is
-  **suggestive rather than significant** (each proportion carries roughly ±0.15 at 95%):
-  **Oracle (0.467) < m (0.567).** With the true rule in its context, the model applies it *worse
-  than mindless neighbor-copying scores*. If that holds up under more seeds, it means the
-  experiment was decided before training started — when the executor's rule-following capacity
-  sits below the copy ceiling, rule-memory cannot win **regardless of axiom quality** — and only
-  the Oracle arm could reveal it. Call it C5, a fifth pre-registerable gate: *the model must
-  apply a rule better than it can copy an exemplar.* Replicating it across seeds is the first
-  item on the to-do list; the effect direction, at least, is exactly what the capability-tax
-  story predicts.
+| Arm | Held-out (mean ± std over 4 seeds) |
+|---|---:|
+| Baseline | 0.289 ± 0.048 |
+| Oracle_Rule (true rule in context) | 0.411 ± 0.103 |
+| **Control_RAG** | **0.600 ± 0.101** |
+| Treatment_Eigen | 0.617 ± 0.106 |
+
+Eigen "edges out" RAG by 0.017 — but read the instrument panel, not the scoreboard: on three
+of four seeds **zero axioms crystallized and the two arms produced literally identical
+predictions**; the entire difference is one seed whose single axiom named the right axis with
+an *inverted* mapping (+0.067, well inside noise). H1 not supported, and the seductive Act-one
+axiom story is gone — it was an artifact of the corrupted regime.
+
+Three findings survived the cleanup, and they're better than the story they replaced:
+
+- **C5, now replicated 4/4.** With the *true* rule in context, the executor scores below the
+  honest nearest-neighbor copy ceiling on every seed (paired Oracle − ceiling =
+  −0.178 ± 0.093). A 4B model applies a rule worse than it copies — so rule-memory could not
+  have won here **regardless of axiom quality**. That's the fifth pre-registerable gate:
+  *the model must apply a rule better than it can copy an exemplar.*
+- **C1 ⇒ ¬C3: the static-task paradox.** The corrected guardrail (measuring retrieval the way
+  the protocol actually retrieves — held-out queries, disjoint vocabulary) revealed the "eigen
+  window" was a measurement artifact: cross-split neighbors match on *polarity* (0.73–0.89),
+  not topic (0.38–0.47), because whatever attribute generalizes across the split dominates
+  cross-split similarity — and that's exactly the attribute the rule depends on. Making the
+  rule embedding-visible made it retrieval-visible. On a static task, the window closes as you
+  open it.
+- **The silence was calibrated.** With retrieval already controlling polarity, the residual
+  failures scatter across per-topic confusions — high-rank structure, no rank-1 spike. The
+  gate-ROC says the compound gate needs ~8× the noise floor to fire; the flip residuals never
+  came close. Zero axioms is what a well-calibrated lossy compressor *does* with no compressible
+  signal.
 
 ## What Titans gets for free, and what legibility costs
 
@@ -210,19 +239,23 @@ it, not just a strong baseline.
 
 So the honest scope of "lossy compressive surprise-memory → rules" is now sharp:
 
-- **The compression side works and is demonstrably safe**: surprise-gated capture, spectral
-  detection with a noise floor, one true rule per real axis, silence otherwise. That's the
-  novel seam — Titans' surprise economics with a rate-gated, *legible* codec, where prior
-  verbal-consolidation systems (Reflexion, Generative Agents, ExpeL) reflect on schedules and
-  keep everything.
-- **The decompression side is the frontier**: legibility pays off exactly when the executor
-  clears C5 and coverage is sparse (m near chance) — and it buys what weights never can:
-  audit, portability across models, human override, and rules that survive a model swap. The
-  next experiments write themselves: same rig, same gates, a stronger model reading (and
-  writing) the rules — cheap, because the detectability gate makes crystallization rare by
-  design; the flip task at the ≥5 seeds its own protocol pre-registers, to promote C5 from
-  suggestive to significant; and an ablation of the surprise gate itself (gated vs
-  store-everything), since the banner mechanism has never been isolated as a variable.
+- **The compression side works, and is calibrated, not just asserted**: surprise-gated
+  capture, spectral detection with a measured ROC (false-positive rate 0.00; fires past ~8×
+  the noise floor), one true rule per real axis (TREC, re-verified on the final code), silence
+  otherwise. That's the novel seam — Titans' surprise economics with a rate-gated, *legible*
+  codec, where prior verbal-consolidation systems (Reflexion, Generative Agents, ExpeL)
+  reflect on schedules and keep everything.
+- **The decompression side is the frontier, and static tasks can't reach it.** C5 says the
+  executor must apply a rule better than it copies (a 4B model doesn't, 4/4 seeds); the
+  C1 ⇒ ¬C3 paradox says that on a fixed-rule task, making the rule visible to the memory makes
+  it visible to retrieval too. The next experiment therefore breaks copying with *time*
+  instead of geometry: a **Rule-Shift** design where the rule changes mid-run, stale exemplars
+  keep retrieving perfectly and answering wrongly, and the re-crystallized rule stays current —
+  gated by an executor microbenchmark (rule-following vs copying vs conflicting contexts), a
+  recency-weighted-RAG control arm pre-registered as the baseline that could kill it, and a
+  sample-size-aware stability threshold. Full pre-registration in the repo
+  (`docs/NEXT_EXPERIMENT.md`). Legibility still buys what weights never can: audit,
+  portability across models, human override — and now the experiment that could prove it pays.
 
 I set out to advertise a mechanism and ended up with a measured boundary: **compress into
 weights when your model is small; compress into sentences when your model can read — and

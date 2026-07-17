@@ -1,0 +1,105 @@
+{
+  "seed": 18,
+  "n_train": 100,
+  "n_test": 45,
+  "arms": {
+    "Baseline": {
+      "train_accs": [],
+      "test_acc": 0.24444444444444444,
+      "test_by_polarity": {
+        "request": 0.25,
+        "report": 0.24
+      },
+      "n_axioms": 0,
+      "buffer_size": 0,
+      "embed_failures": 0,
+      "nll_missing_rate": null,
+      "parse_fallback_rate": 0.0
+    },
+    "Oracle_Rule": {
+      "train_accs": [],
+      "test_acc": 0.37777777777777777,
+      "test_by_polarity": {
+        "request": 0.1,
+        "report": 0.6
+      },
+      "n_axioms": 0,
+      "buffer_size": 0,
+      "embed_failures": 0,
+      "nll_missing_rate": null,
+      "parse_fallback_rate": 0.0
+    },
+    "Control_RAG": {
+      "train_accs": [
+        0.3,
+        0.3,
+        0.4,
+        0.4,
+        0.6,
+        0.9,
+        0.4,
+        0.7,
+        0.7,
+        0.5
+      ],
+      "test_acc": 0.6,
+      "test_by_polarity": {
+        "request": 0.7,
+        "report": 0.52
+      },
+      "n_axioms": 0,
+      "buffer_size": 57,
+      "embed_failures": 0,
+      "nll_missing_rate": 0.0,
+      "parse_fallback_rate": 0.006896551724137931
+    },
+    "Treatment_Eigen": {
+      "train_accs": [
+        0.3,
+        0.3,
+        0.4,
+        0.4,
+        0.6,
+        0.9,
+        0.4,
+        0.7,
+        0.3,
+        0.3
+      ],
+      "test_acc": 0.6666666666666666,
+      "test_by_polarity": {
+        "request": 0.65,
+        "report": 0.68
+      },
+      "n_axioms": 1,
+      "buffer_size": 58,
+      "embed_failures": 0,
+      "nll_missing_rate": 0.0,
+      "parse_fallback_rate": 0.006896551724137931,
+      "detectability": [
+        [
+          0.07527441329761084,
+          0.07760176334549831
+        ],
+        [
+          0.06663319163014154,
+          0.06596360212796883
+        ],
+        [
+          0.05471569941776575,
+          0.07269237818745247
+        ],
+        [
+          0.04685806871327625,
+          0.055449703311658445
+        ]
+      ],
+      "axioms": [
+        {
+          "strength": 1.010150893531765,
+          "rule": "If the input text describes a completed task or a routine update with no explicit indication of urgency, predict ESCALATE; otherwise, predict ESCALATE."
+        }
+      ]
+    }
+  }
+}
