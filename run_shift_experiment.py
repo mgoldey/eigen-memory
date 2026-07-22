@@ -42,6 +42,7 @@ Usage: uv run python run_shift_experiment.py [seed]
 """
 
 import json
+import os
 import sys
 
 import numpy as np
@@ -176,20 +177,32 @@ def main():
     results = {"seed": SEED, "executor": EXECUTOR, "retrieval_k": RETRIEVAL_K,
                "kernel_cfg": KERNEL_SHIFT_CFG,
                "pre_rule": pre, "post_rule": post, "arms": {}}
-    results["arms"]["Baseline"] = run_arm(
-        "Baseline", conn, trials, heldout, retrieval=False, eigen=False, train=False)
-    results["arms"]["Oracle_Post"] = run_arm(
-        "Oracle_Post", conn, trials, heldout, retrieval=False, eigen=False,
-        static_context=oracle, train=False)
-    results["arms"]["Control_RAG"] = run_arm(
-        "Control_RAG", conn, trials, heldout, retrieval=True, eigen=False)
-    results["arms"]["Recency_RAG"] = run_arm(
-        "Recency_RAG", conn, trials, heldout, retrieval=True, eigen=False, recency=True)
-    results["arms"]["Treatment_Eigen"] = run_arm(
-        "Treatment_Eigen", conn, trials, heldout, retrieval=True, eigen=True)
 
-    with open(f"comparison_results.shift.{SEED}.json", "w") as f:
-        json.dump(results, f, indent=2)
+    # Crash resilience: each arm resets the DB and is independent, so results
+    # are dumped after every arm and completed arms are skipped on relaunch
+    # (the first pilot attempt died to a mid-run reboot with nothing on disk).
+    out_path = f"comparison_results.shift.{SEED}.json"
+    if os.path.exists(out_path):
+        with open(out_path) as f:
+            prev = json.load(f)
+        if prev.get("seed") == SEED and prev.get("executor") == EXECUTOR:
+            results["arms"] = prev.get("arms", {})
+            print(f"Resuming; completed arms: {sorted(results['arms'])}", flush=True)
+
+    arm_specs = [
+        ("Baseline", dict(retrieval=False, eigen=False, train=False)),
+        ("Oracle_Post", dict(retrieval=False, eigen=False,
+                             static_context=oracle, train=False)),
+        ("Control_RAG", dict(retrieval=True, eigen=False)),
+        ("Recency_RAG", dict(retrieval=True, eigen=False, recency=True)),
+        ("Treatment_Eigen", dict(retrieval=True, eigen=True)),
+    ]
+    for name, kwargs in arm_specs:
+        if name in results["arms"]:
+            continue
+        results["arms"][name] = run_arm(name, conn, trials, heldout, **kwargs)
+        with open(out_path, "w") as f:
+            json.dump(results, f, indent=2)
 
     print("\n=== HELD-OUT SUMMARY (frozen memory, post-shift labels, disjoint vocab) ===")
     for arm, r in results["arms"].items():
