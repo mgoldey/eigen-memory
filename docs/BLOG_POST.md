@@ -361,6 +361,55 @@ noisy, and partial rather than instant gold labels; and real failure axes are no
 to be embedding-visible — C1 was engineered true here, and the C1 ⇒ ¬C3 result is proof that
 some failure structures can't be caught this way at all.
 
+## The third wedge: annotator disagreement (a hypothesis, not a result)
+
+Every experiment above used clean gold labels. Real feedback streams don't have those — they
+have annotators, and annotators disagree. That turns out to be an argument *for* this
+architecture, and a sharper one than it first looks, because disagreement attacks exemplar
+memory at exactly the point where rules are immune.
+
+Copying inherits label noise at full strength. A RAG arm that copies its nearest neighbor's
+label inherits that one annotator's judgment on that one item — nearest-neighbor error
+compounds label noise roughly one-for-one, forever, on every retrieval. The crystallizer is a
+different kind of estimator: it pools dozens of episodes into one contrast, so idiosyncratic
+labels wash out and it fits the *majority policy* — and once a correct rule is crystallized,
+inference is noise-free from then on. The rule doesn't care that 15% of the buffer is
+mislabeled. Disagreement therefore drives a wedge between the copy ceiling and the rule
+ceiling that *grows with the disagreement rate*.
+
+The reason this deserves its own section: the wedge works on **static** tasks. C1 ⇒ ¬C3
+closed the static regime because a retrieved neighbor always carries the right label — but a
+noisy neighbor doesn't, and label noise degrades copying without touching the embedding
+geometry the detector uses. So the project now has three candidate wedges between rules and
+retrieval: **geometry** (tried — the window closes as you open it), **time** (tried — the
+pilot win above), and **noise** (untried). Each is a different answer to the same question:
+what breaks the guarantee that your nearest stored neighbor knows the answer?
+
+The gate has a principled role under disagreement, and half of it is already calibrated.
+*Unstructured* disagreement — annotators randomly inconsistent — produces no stable
+fail/success axis, and both gate-ROCs show the detector refuses structureless noise
+(false-positive rate ≤ 0.05). *Structured* disagreement — two annotator camps applying
+different implicit policies, correlated with anything embedding-visible — is precisely a
+detectable location contrast. The mechanism would compress the camps' split into a sentence,
+converting silent label noise into a visible policy question a team can adjudicate. The
+pilot's stale clause is a preview of the failure mode: fed contradictory evidence, the
+crystallizer wrote a hedged exception clause — legible enough to spot and resolve. And
+annotator *turnover* is literally the Rule-Shift design: a new annotator with a different
+implicit policy is a rule shift, with labels that are era-correct in their eyes.
+
+The honest caveats, stated before any experiment runs: noisy feedback also degrades the
+machinery's *inputs* — `was_correct` becomes unreliable, which blurs the fail/success
+contrast and lowers the effective SNR (the mean-contrast ROC's sensitivity at half the noise
+edge suggests margin; it was not measured under label noise). And "fits the majority policy"
+cuts both ways — it locks in the majority camp against a possibly-legitimate minority
+reading, which is a governance feature only if a human actually reviews the rule.
+
+It's cheaply testable on the existing harness: flip p% of feedback labels, sweep p, and
+measure where the copy ceiling crosses below rule accuracy and whether crystallization
+precision survives. The pre-registerable claim: *there is a disagreement rate above which
+compressed rules beat copying even with no shift at all* — compression as denoising. That
+experiment is queued behind the five-seed replication.
+
 I set out to advertise a mechanism and ended up with a measured boundary — and then, on the
 far side of it, a first live win: **compress into weights when your model is small; compress
 into sentences when your model can read; break ties with time, because stale memories retrieve
