@@ -1,0 +1,114 @@
+{
+  "snrs": [
+    0.0,
+    0.5,
+    1.0,
+    2.0,
+    4.0
+  ],
+  "n_fails": [
+    25,
+    30,
+    45
+  ],
+  "replicates": 20,
+  "kernel_cfg": {
+    "window": 60,
+    "contrast_on": "embedding_mean",
+    "consecutive_detections": 3,
+    "stability_cos": 0.5
+  },
+  "cells": {
+    "n25_snr0.0": {
+      "fire_rate": 0.0,
+      "detect_rate": 0.05,
+      "edge_used": 55.467647484329504,
+      "beta": 0.0
+    },
+    "n25_snr0.5": {
+      "fire_rate": 0.8,
+      "detect_rate": 0.95,
+      "edge_used": 55.467647484329504,
+      "beta": 5.266291270160126
+    },
+    "n25_snr1.0": {
+      "fire_rate": 0.8,
+      "detect_rate": 0.85,
+      "edge_used": 55.467647484329504,
+      "beta": 7.447660537667483
+    },
+    "n25_snr2.0": {
+      "fire_rate": 0.9,
+      "detect_rate": 1.0,
+      "edge_used": 55.467647484329504,
+      "beta": 10.532582540320252
+    },
+    "n25_snr4.0": {
+      "fire_rate": 0.85,
+      "detect_rate": 0.95,
+      "edge_used": 55.467647484329504,
+      "beta": 14.895321075334966
+    },
+    "n30_snr0.0": {
+      "fire_rate": 0.05,
+      "detect_rate": 0.0,
+      "edge_used": 52.7660296911864,
+      "beta": 0.0
+    },
+    "n30_snr0.5": {
+      "fire_rate": 1.0,
+      "detect_rate": 1.0,
+      "edge_used": 52.7660296911864,
+      "beta": 5.1364398999300285
+    },
+    "n30_snr1.0": {
+      "fire_rate": 1.0,
+      "detect_rate": 1.0,
+      "edge_used": 52.7660296911864,
+      "beta": 7.2640229687953495
+    },
+    "n30_snr2.0": {
+      "fire_rate": 1.0,
+      "detect_rate": 1.0,
+      "edge_used": 52.7660296911864,
+      "beta": 10.272879799860057
+    },
+    "n30_snr4.0": {
+      "fire_rate": 1.0,
+      "detect_rate": 1.0,
+      "edge_used": 52.7660296911864,
+      "beta": 14.528045937590699
+    },
+    "n45_snr0.0": {
+      "fire_rate": 0.05,
+      "detect_rate": 0.05,
+      "edge_used": 70.63758966689436,
+      "beta": 0.0
+    },
+    "n45_snr0.5": {
+      "fire_rate": 1.0,
+      "detect_rate": 1.0,
+      "edge_used": 70.63758966689436,
+      "beta": 5.942961789667437
+    },
+    "n45_snr1.0": {
+      "fire_rate": 1.0,
+      "detect_rate": 1.0,
+      "edge_used": 70.63758966689436,
+      "beta": 8.40461716361277
+    },
+    "n45_snr2.0": {
+      "fire_rate": 1.0,
+      "detect_rate": 1.0,
+      "edge_used": 70.63758966689436,
+      "beta": 11.885923579334873
+    },
+    "n45_snr4.0": {
+      "fire_rate": 1.0,
+      "detect_rate": 1.0,
+      "edge_used": 70.63758966689436,
+      "beta": 16.80923432722554
+    }
+  },
+  "specificity_pass": true
+}

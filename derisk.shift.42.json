@@ -1,0 +1,28 @@
+{
+  "seed": 42,
+  "results_path": "comparison_results.shift.42.cotbug.json",
+  "paired_mcnemar": {
+    "Recency_RAG": {
+      "treatment_only": 35,
+      "other_only": 5,
+      "p_one_sided": 6.91306013322901e-07
+    },
+    "Control_RAG": {
+      "treatment_only": 29,
+      "other_only": 2,
+      "p_one_sided": 2.314336597919464e-07
+    },
+    "Oracle_Post": {
+      "treatment_only": 3,
+      "other_only": 13,
+      "p_one_sided": 0.9979095458984375
+    },
+    "Baseline": {
+      "treatment_only": 74,
+      "other_only": 0,
+      "p_one_sided": 5.293955920339377e-23
+    }
+  },
+  "ideal_copy_ceiling_nn": 0.7555555555555555,
+  "ideal_copy_ceiling_top5maj": 0.7777777777777778
+}
