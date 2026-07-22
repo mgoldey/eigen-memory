@@ -325,6 +325,25 @@ class EigenMemoryKernel:
                 extra_body=self.extra_body,
             )
             raw = response.choices[0].message.content or ""
+            if "RULE:" not in raw:
+                # The whole budget went into the <thought> block (seed-42 shift
+                # pilot: a 1.4k-char truncated CoT was stored and injected —
+                # the truncation cousin of the original full-CoT-axiom bug).
+                # One follow-up asking for the final line alone.
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "user", "content": prompt},
+                        {"role": "assistant", "content": raw},
+                        {"role": "user", "content": "Now give ONLY your final "
+                         "line, in the exact form 'RULE: ...' — no other text."},
+                    ],
+                    temperature=0.0,
+                    seed=0,
+                    max_tokens=120,
+                    extra_body=self.extra_body,
+                )
+                raw = response.choices[0].message.content or ""
         except Exception as e:
             print(f"[EIGEN] crystallization LLM call failed: {e}")
             return
@@ -334,7 +353,12 @@ class EigenMemoryKernel:
         # chars of CoT rambling into every context the axiom was selected for —
         # sabotaging the very arm under test.
         rule = raw.rpartition("RULE:")[2].strip()
-        axiom = f"RULE: {rule}" if rule else raw.strip()
+        if not rule or "<thought" in rule:
+            # Never store scaffolding as memory. The axis stays unconsumed, so
+            # crystallization retries at the next check.
+            print("[EIGEN] no clean RULE line after retry; axiom NOT stored")
+            return
+        axiom = f"RULE: {rule}"
 
         try:
             with self.conn.cursor() as cur:
