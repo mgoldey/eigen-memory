@@ -257,9 +257,115 @@ So the honest scope of "lossy compressive surprise-memory → rules" is now shar
   (`docs/NEXT_EXPERIMENT.md`). Legibility still buys what weights never can: audit,
   portability across models, human override — and now the experiment that could prove it pays.
 
-I set out to advertise a mechanism and ended up with a measured boundary: **compress into
-weights when your model is small; compress into sentences when your model can read — and
-either way, let surprise decide what's worth keeping, and let the eigenvalue earn the write.**
+## Act three: breaking copying with time (pilot, one seed)
+
+That experiment has now run its pilot, and it did the thing.
+
+The setup, briefly. First the executor tax got paid: a 60-item microbenchmark (RFμ) sweeping
+candidate models found that gemma4:12b follows a pasted prose rule at 0.983 **even with five
+contradicting stale exemplars in context** (zero seduction — smaller models lost 10–23 points
+to the same trap), while a copy arm served stale exemplars realizes 0.450. That 0.53 gap,
+measured before the experiment ran, is the headroom the design plays in. One sharp detail with
+a moral: the same model scores 0.517 when the identical rule is formatted as a *table* —
+rules must be injected as prose, which is conveniently what a crystallizer writes. Then the
+task: one **global** polarity rule (rank-1 failure axis by construction), the request row
+flips at trial 100, feedback labels are always era-correct — so the buffer ends up holding
+100 confidently-labeled stale episodes plus 60 current ones, which is exactly what "policy
+changed, memory didn't" looks like in production.
+
+Two pre-registration amendments got forced *before* the pilot spend, both by arithmetic
+rather than by peeking: the aggregate copy-ceiling gate was unachievable by construction
+(only the request row shifts, so report queries stay copyable forever — the gate now binds on
+the shifted row), and the pre-registered cPCA detector is provably blind to this failure
+structure (post-shift failures concentrate on one polarity, successes on the other — a
+*location* difference, which covariance contrasts cancel). The amended detector — a
+two-sample mean contrast under the identical permutation-edge/stability/novelty gates — got
+the same treatment as the original: a synthetic ROC at the pilot's exact configuration.
+False-positive rate at pure noise 0.00–0.05; fires at 1.00 from *half* the noise edge upward.
+
+And then the pipeline earned its keep — twice, because the first pilot surfaced **bug six**:
+the crystallizer's token budget ran out inside its `<thought>` block and 1.4k characters of
+truncated chain-of-thought were stored and injected as the "axiom." The G4 gate (score every
+fired axiom against the planted rule *before* unblinding accuracy) caught it, in a project
+whose founding lesson is that this bug class recurs. The fixed crystallizer — retry for a bare
+`RULE:` line, never store scaffolding — produced a genuinely legible rule and scored *higher*:
+
+| Arm (held-out, post-shift labels, disjoint vocab) | Accuracy |
+|---|---:|
+| Baseline (no memory) | 0.033 |
+| Recency_RAG (newest-first + staleness hint — the kill arm) | 0.522 |
+| Control_RAG | 0.556 |
+| **Treatment_Eigen (one crystallized rule, exemplars retired)** | **0.911** |
+| Oracle (true post-shift rule pasted) | 0.967 |
+
+The detector stayed silent through 100 pre-shift trials (one marginal flicker, correctly
+rejected by the streak rule), watched batch surprise spike 0.30 → 9.78 NLL at the shift, fired
+on three consecutive checks, and crystallized exactly one axiom:
+
+> *"If the status is 'resolved' or 'already through review', label as ESCALATE; if the status
+> is 'pending' or 'awaiting review', label as DEFER (unless it is a specific 'still awaiting
+> review' case which is FILE)."*
+
+Both polarity clusters map to the correct post-shift labels. And the parenthetical is a
+**stale fragment of the pre-shift rule** that a human auditor can see and strike — the
+auditability pitch writing its own demo. (It names a training-vocabulary marker, so it never
+fired on the disjoint held-out set; requests scored 1.00.)
+
+The paranoia pass, since a result this clean invites it: Eigen beats the kill arm by +0.389
+with 39-vs-4 discordant pairs (McNemar p = 1.6e-8); the axiom was the *entire* context on all
+90 test items, and an empty context scores 0.033, so the content carries the effect; and a
+copy policy with **perfect** staleness filtering — retrieval restricted to only the 60
+post-shift episodes, stronger than any realizable recency weighting — ceilings at 0.778,
+well below 0.911. No exemplar policy over this buffer reaches the treatment number.
+
+The honest scope: this is **one seed and one crystallization event**, on a task built to be
+winnable (rank-1, embedding-visible — the C1 ⇒ ¬C3 lesson applied in reverse). The
+crystallized rule is extensional — it enumerates markers rather than naming the
+request-vs-report concept — and the ablation that would isolate the spectral gate's value
+over a dumb "summarize recent failures every N batches" trigger hasn't run. The five-seed
+pre-registered decision is next. But the mechanism's full loop — mistakes → gated detection →
+one legible sentence → exemplars retired → near-oracle accuracy — has now happened outside a
+thought experiment.
+
+## What this models in the wild
+
+The structure being simulated — *repeated decisions with after-the-fact feedback, a policy
+that changes without announcement, and a memory of past cases that silently flips from asset
+to liability* — is not exotic:
+
+- **Ticket triage and support routing.** An org changes its escalation policy; every
+  historical ticket in the retrieval index encodes the old routing. A RAG triage bot copies
+  stale precedent indefinitely — Control_RAG at 0.556 *is* that bot. The fix this mechanism
+  proposes: detect the post-change error cluster, distill "billing requests now go to the
+  platform team," show a human the sentence.
+- **Content moderation.** Policies update constantly; precedent-based labeling is
+  stale-exemplar copying; appeals and overturns are the feedback stream. This is also where
+  legibility stops being aesthetic: you can diff, audit, and veto a written rule — the
+  stale-clause catch above is the governance story regulators actually ask for.
+- **Fraud and compliance decisioning.** Thresholds move with regulation and adversaries;
+  crucially, only some segments shift while others stay stable — the partial-shift design
+  (requests flip, reports don't) models exactly that, and errors concentrating on one segment
+  is the mean-contrast signature the detector fires on.
+- **Coding agents with persistent memory** — the self-referential one. A team migrates an
+  API; the agent's memory is full of old-style examples; CI failures are the feedback.
+  Crystallizing "use X, not Y, as of version Z" into a memory file is literally what
+  CLAUDE.md-style agent memory does; this project is a controlled study of when that beats
+  pasting retrieved snippets. The economics compound here: one rule distilled once by a large
+  model, executed forever by a small one, versus five exemplars shipped with every call.
+- **Medical coding and claims.** Code sets update on a schedule, rejections are feedback,
+  and auditability is a legal requirement, not a preference.
+
+What the model deliberately simplifies, so the transfer claim stays honest: real shifts are
+gradual and overlapping rather than a clean flip at trial 100; real feedback is delayed,
+noisy, and partial rather than instant gold labels; and real failure axes are not guaranteed
+to be embedding-visible — C1 was engineered true here, and the C1 ⇒ ¬C3 result is proof that
+some failure structures can't be caught this way at all.
+
+I set out to advertise a mechanism and ended up with a measured boundary — and then, on the
+far side of it, a first live win: **compress into weights when your model is small; compress
+into sentences when your model can read; break ties with time, because stale memories retrieve
+perfectly and answer wrongly — and either way, let surprise decide what's worth keeping, and
+let the eigenvalue earn the write.**
 
 ---
 
