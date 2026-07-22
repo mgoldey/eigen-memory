@@ -1,26 +1,26 @@
 {
   "seed": 42,
-  "results_path": "comparison_results.shift.42.cotbug.json",
+  "results_path": "comparison_results.shift.42.json",
   "paired_mcnemar": {
     "Recency_RAG": {
-      "treatment_only": 35,
-      "other_only": 5,
-      "p_one_sided": 6.91306013322901e-07
+      "treatment_only": 39,
+      "other_only": 4,
+      "p_one_sided": 1.5540763342869468e-08
     },
     "Control_RAG": {
-      "treatment_only": 29,
+      "treatment_only": 34,
       "other_only": 2,
-      "p_one_sided": 2.314336597919464e-07
+      "p_one_sided": 9.70612745732069e-09
     },
     "Oracle_Post": {
       "treatment_only": 3,
-      "other_only": 13,
-      "p_one_sided": 0.9979095458984375
+      "other_only": 8,
+      "p_one_sided": 0.96728515625
     },
     "Baseline": {
-      "treatment_only": 74,
+      "treatment_only": 79,
       "other_only": 0,
-      "p_one_sided": 5.293955920339377e-23
+      "p_one_sided": 1.6543612251060553e-24
     }
   },
   "ideal_copy_ceiling_nn": 0.7555555555555555,

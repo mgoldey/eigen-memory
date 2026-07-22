@@ -201,5 +201,52 @@ every fired axiom was scored for correctness. This is a map of where Titans-styl
 economics does and does not transfer to legible memory." That is a strong portfolio artifact
 regardless of the coin flip.
 
+## 6. Pilot result and threats-to-validity (2026-07-22, seed 42)
+
+Held-out post-shift, frozen memory, disjoint vocab: Baseline 0.033 · Oracle_Post 0.967 ·
+Control_RAG 0.556 · Recency_RAG 0.522 · **Treatment_Eigen 0.911** (requests 1.00, reports
+0.84). Primary endpoint Δ vs Recency_RAG = **+0.389** (bar +0.10), McNemar p = 1.6e-8
+(39-vs-4 discordants); vs Control_RAG p = 9.7e-9. Secondary endpoint (within 0.05 of
+Oracle): 0.056 — just misses. G3 fired exactly as pre-registered (a marginal pre-shift
+detection was rejected by the streak rule when λ dipped back under the edge; then three
+consecutive post-shift detections, stable direction, one crystallization; surprise spiked
+0.30 → 9.78 NLL at the shift boundary). Artifacts: comparison_results.shift.42.json,
+derisk.shift.42.json, gate_roc_mean.json, guardrail.shift.<seed>.json ×5.
+
+**G4 caught a real mechanism bug on the first attempt** (archived:
+comparison_results.shift.42.cotbug.json): the crystallizer's 400-token budget ran out
+inside its <thought> block and 1.4k chars of truncated CoT were stored and injected —
+scoring 0.856, causally effective but not the claimed mechanism. Fix: retry for a bare
+RULE line, never store scaffolding. The rerun crystallized a genuinely legible prose rule
+— "resolved / already through review → ESCALATE; pending / awaiting review → DEFER (unless
+'still awaiting review', which is FILE)" — and scored **higher** (0.911). G4 scoring: both
+polarity clusters map to the correct post-shift labels, expressed extensionally (marker
+enumeration, not request/report intension) with one stale exception clause — a pre-rule
+fragment ('still awaiting review' → FILE = the old request row) that names a train-split
+marker and therefore never triggers on the disjoint held-out vocabulary. That clause is
+exactly the auditability pitch: a human reads the rule, sees the stale fragment, vetoes it.
+
+Complaints pre-empted, with the artifact that answers each:
+- *"Single seed / noise"* — within-seed McNemar above; seed-level replication still
+  requires the 5-seed run (open).
+- *"The kill arm is a strawman"* — a copy policy with PERFECT staleness filtering (store
+  restricted to the 60 post-shift trials) ceilings at 0.756 (nn) / 0.778 (top-5 majority):
+  below Eigen 0.911. No exemplar policy over this buffer reaches the Treatment number.
+  Separately, realized Recency_RAG (0.522) landed *below* Control_RAG (0.556) — in-context
+  recency-weighting is hard to execute even with newest-first ordering and a staleness hint.
+- *"You amended the G3 estimator mid-stream"* — amended BEFORE the pilot, by arithmetic
+  (cPCA is blind to location differences); and now calibrated to the same standard as the
+  original gate: gate_roc_mean.json shows noise fire-rate 0.00–0.05 and fire-rate 1.00 from
+  snr 0.5 at the pilot's n_fail≈30, at live cadence with the exact pilot kernel config.
+- *"45% parse-fallback = parsing luck"* — inverted: Control_RAG 0.75 and Recency_RAG 0.69
+  are HIGHER (exemplar-echo is a property of exemplar-laden prompts); one identical parser
+  everywhere; Treatment's post-crystallization context is the cleanest of the memory arms.
+- *"The axiom replaced exemplars — maybe dropping stale exemplars did the work"* — the
+  axiom was injected on all 90 held-out items, so Treatment's context was axiom-only;
+  Baseline (empty context) scores 0.033. The content, not the absence, carries the effect.
+- *Still open*: 5-seed replication; the axiom is extensional (markers) rather than
+  intensional (polarity) — fine for the accuracy claim, worth naming in any write-up;
+  surprise-gate ablation remains unrun (crystallizer consumes ungated residuals).
+
 **If only three things get done**: (1) RFμ + G0; (2) the S0 synthetic gate-ROC — it converts
 "0 axioms fired" from an anticlimax into a calibration result; (3) the Rule-Shift pilot seed.
