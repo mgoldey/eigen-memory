@@ -350,19 +350,32 @@ times** — two thresholds I never derived from any stated error budget. A persi
 near-miss scores exactly zero under that rule. The fix isn't to loosen anything by feel:
 it's a gate whose one threshold is calibrated against a measured noise null at a stated
 false-fire budget — accumulate per-check permutation p-values into decayed log-evidence,
-fire when the total clears the level that noise reaches only 5% of the time. That re-run
-is pre-registered (labeled as the post-hoc amendment it is, threshold tuned on synthetic
-noise only, reported alongside the miss — never instead of it). There's also a humbler
-possibility the calibration sweep already hints at: under this estimator pure noise
-averages 0.87× the edge, so some of these seeds may sit where *no* honest gate fires —
-a signal problem, not a threshold problem. The ungated-trigger ablation will separate the
-two.
+fire when the total clears the level that noise reaches only 5% of the time.
+
+So I built exactly that gate and calibrated it, threshold tuned on synthetic noise only —
+and **the calibration cancelled its own re-run**. Two findings. First, the honest
+threshold is much higher than independence would suggest (the noise null's evidence
+quantile runs ~2× the independent-checks prediction), because consecutive detection
+windows share five-sixths of their residuals — even noise looks "direction-stable" under
+that much overlap, which quietly demotes the strongest-looking evidence the shut seeds
+had. Second, at that budget the evidence-accumulating gate fires no more often than the
+crude streak rule anywhere on the grid. And the sweep's ratio column locates the shut
+seeds precisely: detection under either rule needs the statistic sustained at ~1.05× the
+noise edge; pure noise averages 0.87×; the shut seeds lived at 0.81–0.85×. They weren't
+threshold-starved. They were **signal-starved** — no gate that honors a false-fire budget
+fires there, and a gate that would have is a gate that compresses noise. The mechanism's
+one-in-five fire rate wasn't a bug in the gate; it was the gate telling the truth about
+the embedding stream it was watching.
 
 So act three ends the way act two did: the headline number lost to the bar, and the
-autopsy is worth more than the number. The one-in-five fire is itself the finding —
-*conditional on detection, compression beats copying by a wide, legible margin; detection
-at real-world SNR is the bottleneck* — and the next experiment attacks the bottleneck
-with a threshold that finally answers to something real.
+autopsy is worth more than the number. Conditional on detection, compression beats
+copying by a wide, legible margin; detection at real-world SNR is the bottleneck — and
+the bottleneck turns out to be the *featurization*, not the threshold. What the residual
+stream carries on most seeds simply doesn't separate failure from success strongly enough
+to compress. The next levers are an ungated-trigger ablation (if a scheduled crystallizer
+extracts a correct rule from those same windows, the signal was there and the estimator
+missed it; if it writes garbage, the calibration called it right) and a residual
+representation that actually carries the contrast.
 
 ## What this models in the wild
 
@@ -445,7 +458,7 @@ It's cheaply testable on the existing harness: flip p% of feedback labels, sweep
 measure where the copy ceiling crosses below rule accuracy and whether crystallization
 precision survives. The pre-registerable claim: *there is a disagreement rate above which
 compressed rules beat copying even with no shift at all* — compression as denoising. That
-experiment is queued behind the gate-v2 re-run that the replication's miss motivated.
+experiment is queued behind the ungated-trigger ablation the replication's miss motivated.
 
 I set out to advertise a mechanism and ended up with a measured boundary — and then, on the
 far side of it, a first live win: **compress into weights when your model is small; compress

@@ -292,6 +292,28 @@ same primary endpoint (Δ vs Recency_RAG ≥ +0.10 across seeds), same G4 axiom 
 and is reported alongside v1 as "v2, amended after 2 gate-shut seeds", never replacing it.
 A v2 result that still misses is reported as a miss.
 
+**Outcome (2026-07-26, gate_roc_v2.json) — the calibration cancelled the re-run.**
+θ landed at 13.16 (per-cell q95 of armed noise evidence 7.44/10.14/13.15, vs a null
+stationary mean of ~5 — the overlapping-window dependence roughly doubles what
+independence would predict, vindicating the empirical-calibration requirement). At that
+budget, v2 fires no more often than v1 anywhere on the grid (identical at n_fail 30/45,
+slightly lower at 25), and v2's fresh-noise specificity check came back 0.10 at n30 —
+itself over budget. Both rules fire ≥ 0.90 from snr 0.15 at live window compositions,
+i.e. from a *sustained* λ/edge ≈ 1.05; pure noise averages 0.86–0.89; the shut seeds'
+per-check means were 0.81–0.85. The apparent direction-stability on shut seeds is also
+what overlapping-window noise produces (consecutive windows share ~5/6 of residuals).
+**Conclusion: the shut seeds are signal-starved, not threshold-starved — no gate honoring
+a 5% run-level false-fire budget fires on them — and the pre-registered v2 Treatment
+re-run is cancelled as pointless-by-calibration** (the sim killed the spend before it
+started; that is what these gates are for). Caveat: the sim plants a rank-1 shift in iid
+gaussian embeddings, so the snr↔ratio mapping to live data is approximate — but the
+within-sim v1-vs-v2 comparison is exact and answers the amendment's question. The live
+next levers are **featurization** (a residual stream that actually carries the contrast)
+and the **ungated-trigger ablation** (which now doubles as a check on this sim-to-live
+mapping: if an ungated crystallizer extracts a correct rule from the shut seeds' windows,
+the signal was there and the estimator missed it; if it writes garbage, the calibration
+called it right).
+
 ## 8. Five-seed replication verdict (2026-07-26): pre-registered endpoint NOT met
 
 All five seeds complete (42 pilot + 2, 18, 23, 7 run 2026-07-25/26, seeds sequential,
@@ -327,7 +349,8 @@ So the result decomposes cleanly:
 This is the pre-registration's named failure mode ("G3 never fires → report that the gate
 correctly identifies this structure as not spectrally compressible") landing on 4 of 5
 seeds, with the pilot seed showing what happens when it does fire. Follow-ups, in order:
-(1) the §7 gate-v2 re-run (Treatment arms only, calibrated θ, reported alongside — not
-instead of — this verdict); (2) an exploratory ungated arm (crystallize on a fixed
-schedule) to separate threshold-starvation from signal-starvation; (3) the label-noise
-wedge, unchanged.
+(1) ~~the §7 gate-v2 re-run~~ — cancelled by its own calibration (§7 outcome: the shut
+seeds are signal-starved, not threshold-starved; v2 fires no more than v1 at an honest
+budget); (2) an exploratory ungated arm (crystallize on a fixed schedule) — now doing
+double duty as the signal-vs-estimator arbiter; (3) residual featurization work if the
+ungated arm shows the signal was there; (4) the label-noise wedge, unchanged.
