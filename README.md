@@ -76,7 +76,7 @@ Every task runs the same agent with arms toggled:
 | **Treatment_Eigen** | on | on | RAG **plus** crystallized eigen-axioms. |
 | **Oracle_Rule** (flip task only) | off | off | The *true* rule pasted into context — the headroom ceiling. |
 
-### Results — a rigorous three-task negative
+### Results — the static three-task negative
 
 | | Number-game | TREC | Label-flip (held-out, frozen memory) |
 |---|---|---|---|
@@ -147,6 +147,30 @@ no learnable signal it could act on — then rationalized surrender. (Full story
 
 </details>
 
+### Act three — Rule-Shift: breaking copying with time (ran; verdict: miss, with one loud exception)
+
+Static tasks being structurally unwinnable (C1 ⇒ ¬C3), the follow-up broke copying with
+*time*: the label rule flips at trial 100, stale exemplars keep retrieving perfectly and
+answering wrongly, and a re-crystallized rule stays current. Executor upgraded to a 12B
+that passes the RFμ qualification gemma3:4b failed (Oracle arms score 0.90–0.99 — the C5
+executor boundary is real and crossable). Pre-registered kill arm: recency-weighted RAG.
+
+**Pilot seed**: the whole banner mechanism fired in sequence — surprise spiked 0.30 → 9.78
+NLL at the shift, the gate detected on exactly 3 consecutive checks, and the crystallizer
+wrote one legible prose rule (with a stale exception clause a human reviewer would
+strike — the auditability pitch, self-demonstrating). Held-out: **0.911 vs 0.522** for the
+kill arm (McNemar p = 1.6e-8), above even a copy policy with *perfect* staleness filtering
+(0.778). **Five-seed pre-registered verdict: miss** — pooled Δ vs the kill arm **+0.078
+against a +0.10 bar** (direction real, p = 0.002); the gate fired on **1 of 5 seeds**, and
+on every gate-shut seed Treatment's predictions are item-identical to plain RAG — no
+axiom, no effect, no hidden channel. The autopsy ([gate_roc_v2.py](gate_roc_v2.py)): a
+budget-calibrated evidence-accumulating gate fires no more often than the crude streak
+rule, because the shut seeds sit at noise-level contrast (λ/edge 0.81–0.85, noise
+averages 0.87) — **signal-starved, not threshold-starved**. Conditional on detection,
+compression beats copying by a wide, auditable margin; detection at real-world SNR is the
+bottleneck, and the bottleneck is the featurization, not the threshold. Full ledger:
+[docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §5–8.
+
 ---
 
 ## Run it yourself
@@ -186,25 +210,28 @@ DB/LLM ([tests/test_kernel_consolidation.py](tests/test_kernel_consolidation.py)
 
 ## What I'd do next
 
-The full pre-registered design lives in [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) —
-the short version: static tasks are structurally unwinnable (C1 ⇒ ¬C3), so the next accuracy
-claim must break copying with something orthogonal to embedding geometry. The **Rule-Shift
-experiment**: the rule changes mid-run, stale exemplars keep retrieving perfectly and answering
-wrongly, and the re-crystallized rule stays current. Gated, in order, by:
+The Rule-Shift experiment above consumed the old version of this list (RFμ, the
+sample-size-aware stability threshold, and the recency kill arm all ran as pre-registered).
+What its miss opens up, in order — full ledger in
+[docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §7–8:
 
-- **RFμ — a 60-item executor microbenchmark** (rule-following vs copying vs conflicting
-  contexts) to qualify a model before burning a run; gemma3:4b already failed C5, so
-  candidates start at 12B. Crystallize with the biggest model, execute with the cheapest
-  passer — "write with a big model rarely, read with a small model always."
-- A **sample-size-aware stability threshold** — the gate-ROC shows the fixed 0.95 cosine
-  demands ~8× the noise edge; the pre-shift/post-shift design needs detection at less.
-- The **recency-weighted RAG control arm** — the one baseline that could beat it, pre-registered
-  rather than rebutted.
+- **The ungated-trigger ablation** — feed the gate-shut seeds' post-shift windows to a
+  crystallizer on a fixed schedule, no gate, and G4-score what it writes. This is the
+  arbiter: a correct rule means the signal was there and the *estimator* missed it; garbage
+  means the calibration called it right. It also finally isolates the spectral gate as a
+  variable — the one ablation this repo has owed since the flip experiment.
+- **Residual featurization** (conditional on the ablation saying "signal was there") — the
+  estimator currently contrasts raw embedding means; the shut seeds show that stream carries
+  noise-level contrast on most vocabularies.
+- **The label-noise wedge** — the third way to break copying (after geometry, which failed,
+  and time, which split): exemplar-copying inherits annotator noise one-for-one at
+  retrieval; a crystallized rule is a pooled majority-policy estimator, noise-free at
+  inference. Pre-registerable as a noise-rate sweep on the *static* task — reopening the
+  regime C1 ⇒ ¬C3 closed.
 
-Also queued: ablate the surprise gate itself (store-everything vs gated — the banner mechanism
-has never been isolated as a variable), and score every fired axiom against the planted rule
-(current crystallization precision: TREC 1/1 correct-axis-and-mostly-true; flip 1/2 — seed 18's
-axiom named the axis but inverted the mapping).
+Crystallization precision so far, scored against planted rules (G4): TREC 1/1, flip 1/2
+(right axis, inverted mapping), Rule-Shift 1/1 legible-and-correct (with one stale clause a
+reviewer would veto — which is the auditability argument working).
 
 ## Going deeper
 

@@ -354,3 +354,22 @@ seeds are signal-starved, not threshold-starved; v2 fires no more than v1 at an 
 budget); (2) an exploratory ungated arm (crystallize on a fixed schedule) — now doing
 double duty as the signal-vs-estimator arbiter; (3) residual featurization work if the
 ungated arm shows the signal was there; (4) the label-noise wedge, unchanged.
+
+## 9. Ungated-trigger ablation protocol (2026-07-26, pre-registered; not yet run)
+
+Script: `ungated_ablation.py` (written box-idle, untested until Ollama is free). Per shut
+seed {2, 18, 23, 7}: rebuild the end-of-run window (embeddings + stale-copier proxy for
+was_correct — a trial fails iff the similarity-nearest earlier trial's stored label ≠ its
+era-correct label; per-trial live correctness wasn't persisted, and this proxy reproduces
+the planted failure structure and the observed ~0.42–0.45 post-adapt accuracy), compute
+the ungated mean-contrast axis, and force ONE crystallization — no detectability gate, no
+streak, no stability/novelty. The clean-RULE guard stays (it's a storage-hygiene fix, not
+a gate). **Readout, committed in advance**: G4 rule-text scoring only — a rule counts as
+correct iff it maps BOTH polarities to the era-correct post-shift labels (the seed-42 bar).
+Correct on ≥2 of 4 seeds → the signal was in the episodes and the *estimator/featurization*
+missed it → featurization work follows. Correct on ≤1 → the calibration's signal-starved
+verdict stands and the Rule-Shift chapter closes as reported. Accuracy impact of forced
+axioms is explicitly out of scope for this ablation (a wrong forced axiom poisoning
+held-out accuracy is already known from the flip experiment; the question here is signal
+existence, not deployment policy). Exploratory label, reported alongside — the 5-seed
+verdict (§8) is unaffected either way.

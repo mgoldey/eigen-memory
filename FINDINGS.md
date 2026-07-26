@@ -295,6 +295,10 @@ version:
   changes mid-run, stale exemplars keep retrieving perfectly and answering wrongly, the
   re-crystallized rule stays current. Pre-registered gates include a recency-weighted-RAG
   control arm (the baseline that could kill it) and a rank-1 failure axis by construction.
+  *(Ran 2026-07-22/26: pilot seed fired end-to-end and scored 0.911 vs 0.522 for the kill
+  arm; the five-seed pre-registered endpoint missed — pooled Δ +0.078 vs a +0.10 bar, gate
+  fired 1/5 seeds, shut seeds shown signal-starved by calibration. See README "Act three"
+  and docs/NEXT_EXPERIMENT.md §6–8.)*
 - **RFμ, a 60-item executor microbenchmark** (rule vs copy vs conflicting contexts) to qualify
   a model before burning a run — gemma3:4b already failed C5, so candidates start at 12B.
 - **A sample-size-aware stability threshold** — the gate-ROC shows the fixed 0.95 cosine
