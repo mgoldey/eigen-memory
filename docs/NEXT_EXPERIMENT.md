@@ -250,3 +250,84 @@ Complaints pre-empted, with the artifact that answers each:
 
 **If only three things get done**: (1) RFμ + G0; (2) the S0 synthetic gate-ROC — it converts
 "0 axioms fired" from an anticlimax into a calibration result; (3) the Rule-Shift pilot seed.
+
+## 7. Gate v2 amendment (2026-07-25): evidence accumulation, calibrated to a stated error budget
+
+**Trigger** (recorded before seeds 23/7 finished): replication seeds 2 and 18 both went
+gate-shut → 0 axioms → Treatment ≡ Control_RAG on all 90 held-out predictions (verified
+identical). Their kernel telemetry shows the gate wasn't refusing noise — it was refusing
+*evidence*: across 7 checks the contrast direction was flagged stable on 6, with λ₁ at
+0.60–1.10× the edge every time. A fixed failure axis reproducing across overlapping windows
+is exactly the signature the gate exists to find, and the rule scored it zero.
+
+**Diagnosis — the v1 rule's two free parameters were never derived from an error budget:**
+- the "edge" is the **max of 20 permutation draws** (implied per-check α ≈ 1/21, with
+  enormous variance in the edge itself — it ranged 0.040–0.056 across checks on the same
+  seed; seed 2's lone "detection" was against a lucky low draw);
+- **streak = 3** consecutive binary super-edge checks, which discards all sub-edge evidence
+  — a near-miss at 0.9× the edge counts exactly as much as pure noise.
+
+Neither the max (vs a quantile) nor the 3 (vs 2 or 5) was chosen against a stated
+false-fire target. The stability and novelty gates are untouched by this amendment.
+
+**v2 rule** (one calibrated quantity replaces both free choices):
+- per check, a permutation **p-value** — rank of the observed statistic among 200
+  permutations, `p = (1 + #{perm ≥ obs}) / 201` — not a max;
+- decayed log-evidence `E_t = 0.8·E_{t−1} + (−ln p_t)`;
+- fire when `E_t ≥ θ` AND stable AND novel;
+- **θ is the smallest value with run-level noise fire-rate ≤ 0.05** at live cadence
+  (16 checks × 10 trials, window 60), measured by simulation with the overlapping-window
+  dependence included — consecutive windows share ~50/60 residuals, which correlates even
+  noise directions and inflates the stable flag, so θ must absorb that; an analytical
+  threshold would be anti-conservative. Calibration: `gate_roc_v2.py` → `gate_roc_v2.json`
+  (v1 and v2 run paired on identical observation streams).
+
+**Integrity protocol.** The trigger came from live-seed telemetry, so this is a post-hoc
+amendment and is labeled as such everywhere. To keep it from being tuning-to-the-test:
+θ is selected **only from the synthetic noise null** — no live-seed data enters the
+calibration; the running 5-seed replication completes under v1 unchanged and its verdict
+is reported as THE pre-registered result; v2 then gets its own pre-registered re-run —
+Treatment arm only per seed (the other four arms are gate-independent and are reused),
+same primary endpoint (Δ vs Recency_RAG ≥ +0.10 across seeds), same G4 axiom audit —
+and is reported alongside v1 as "v2, amended after 2 gate-shut seeds", never replacing it.
+A v2 result that still misses is reported as a miss.
+
+## 8. Five-seed replication verdict (2026-07-26): pre-registered endpoint NOT met
+
+All five seeds complete (42 pilot + 2, 18, 23, 7 run 2026-07-25/26, seeds sequential,
+~3 h each; one OOM event killed llama-server mid-seed-23 and the run survived via
+respawn — comparison_results.shift.<seed>.json ×5).
+
+| seed | gate | Eigen | Recency_RAG | Control_RAG | Δ (primary) |
+|-----:|------|------:|------------:|------------:|------------:|
+| 42 | **fired** | 0.911 | 0.522 | 0.556 | **+0.389** |
+| 2 | shut | 0.644 | 0.544 | 0.644 | +0.100 |
+| 18 | shut | 0.500 | 0.567 | 0.500 | −0.067 |
+| 23 | shut | 0.600 | 0.611 | 0.611 | −0.011 |
+| 7 | shut | 0.633 | 0.656 | 0.633 | −0.022 |
+
+**Pooled (450 paired items): Eigen 0.658, Recency_RAG 0.580, Δ = +0.078 — below the
+pre-registered +0.10 bar. Endpoint NOT met**, despite the direction being real (McNemar
+89-vs-54 discordant, one-sided p = 2.2e-3) and Eigen > Control_RAG (0.658 vs 0.589)
+holding. Verdict: **miss**; the +0.10 effect-size bar does the work the p-value can't.
+
+Mechanistic accounting is exact: on every gate-shut seed, Treatment's 90 held-out
+predictions are IDENTICAL to Control_RAG's (verified item-level) — no axiom, no effect,
+no hidden channel. The entire pooled gain is seed 42's fire (+0.355 over its own control).
+So the result decomposes cleanly:
+- **Conditional on firing, the mechanism wins big and legibly** (one seed: +0.389 over
+  the kill arm, McNemar 1.6e-8, auditable prose rule).
+- **The gate fires on 1/5 seeds at this task's real SNR.** The shut-seed telemetry shows
+  why (§7): direction-stable contrasts at 0.60–1.10× a max-of-20-permutations edge,
+  discarded by the binary streak. And the v2 sweep's first row adds a caution: pure noise
+  averages λ/edge ≈ 0.87 under this estimator, so magnitude-wise the shut seeds sit near
+  snr ≈ 0.1–0.35 — partly a threshold problem (§7's fix), possibly partly a signal problem
+  (residual featurization may simply carry little contrast on these vocabularies).
+
+This is the pre-registration's named failure mode ("G3 never fires → report that the gate
+correctly identifies this structure as not spectrally compressible") landing on 4 of 5
+seeds, with the pilot seed showing what happens when it does fire. Follow-ups, in order:
+(1) the §7 gate-v2 re-run (Treatment arms only, calibrated θ, reported alongside — not
+instead of — this verdict); (2) an exploratory ungated arm (crystallize on a fixed
+schedule) to separate threshold-starvation from signal-starvation; (3) the label-noise
+wedge, unchanged.

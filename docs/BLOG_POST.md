@@ -327,6 +327,43 @@ pre-registered decision is next. But the mechanism's full loop — mistakes → 
 one legible sentence → exemplars retired → near-oracle accuracy — has now happened outside a
 thought experiment.
 
+### The replication: the bar not cleared
+
+Four more seeds ran, and the pre-registered endpoint **missed**. Pooled over 450 paired
+held-out items: Eigen 0.658 vs the recency kill-arm 0.580 — Δ = +0.078 against the +0.10
+bar. The direction is real (89-vs-54 discordant pairs, p = 0.002), but I set an effect-size
+bar precisely so a significant-but-small pooled number couldn't be dressed up as a win, and
+it did its job. Verdict: miss.
+
+The decomposition is unusually clean, because the architecture leaves no partial credit.
+The gate fired on **one seed in five**. On that seed, treatment beat the kill arm by +0.389
+with an auditable prose rule. On the four gate-shut seeds, zero axioms crystallized — and
+treatment's predictions were *item-for-item identical* to plain RAG's (verified, all 90 per
+seed). No axiom, no effect, no hidden channel. Everything the mechanism earned, it earned
+on the seed where it fired.
+
+Why didn't it fire? The telemetry says the gate wasn't refusing noise — it was refusing
+*evidence*. Across the shut seeds, the failure-contrast direction reproduced check after
+check (the stability flag lit on 6 of 7 checks) while its magnitude hovered at 0.6–1.1×
+a detection edge defined as the **max of 20 permutation draws**, crossed **3 consecutive
+times** — two thresholds I never derived from any stated error budget. A persistent
+near-miss scores exactly zero under that rule. The fix isn't to loosen anything by feel:
+it's a gate whose one threshold is calibrated against a measured noise null at a stated
+false-fire budget — accumulate per-check permutation p-values into decayed log-evidence,
+fire when the total clears the level that noise reaches only 5% of the time. That re-run
+is pre-registered (labeled as the post-hoc amendment it is, threshold tuned on synthetic
+noise only, reported alongside the miss — never instead of it). There's also a humbler
+possibility the calibration sweep already hints at: under this estimator pure noise
+averages 0.87× the edge, so some of these seeds may sit where *no* honest gate fires —
+a signal problem, not a threshold problem. The ungated-trigger ablation will separate the
+two.
+
+So act three ends the way act two did: the headline number lost to the bar, and the
+autopsy is worth more than the number. The one-in-five fire is itself the finding —
+*conditional on detection, compression beats copying by a wide, legible margin; detection
+at real-world SNR is the bottleneck* — and the next experiment attacks the bottleneck
+with a threshold that finally answers to something real.
+
 ## What this models in the wild
 
 The structure being simulated — *repeated decisions with after-the-fact feedback, a policy
@@ -408,7 +445,7 @@ It's cheaply testable on the existing harness: flip p% of feedback labels, sweep
 measure where the copy ceiling crosses below rule accuracy and whether crystallization
 precision survives. The pre-registerable claim: *there is a disagreement rate above which
 compressed rules beat copying even with no shift at all* — compression as denoising. That
-experiment is queued behind the five-seed replication.
+experiment is queued behind the gate-v2 re-run that the replication's miss motivated.
 
 I set out to advertise a mechanism and ended up with a measured boundary — and then, on the
 far side of it, a first live win: **compress into weights when your model is small; compress
