@@ -1,27 +1,34 @@
 # Eigen-Memory: compressing an agent's surprises into rules instead of weights
 
-**Titans ([Behrouz et al. 2024](https://arxiv.org/abs/2501.00663)) keeps what surprises it and
+Titans ([Behrouz et al. 2024](https://arxiv.org/abs/2501.00663)) keeps what surprises it and
 compresses it into neural weights — but Titans is an architecture you pretrain from scratch.
-This project rebuilds those economics on a frozen 4B model with no training loop, compressing
-surprising failures into short, legible English rules — and runs three controlled experiments to
-find where that beats plain retrieval. It never does, and the instrumented reasons why are the
-deliverable:**
+This project rebuilds those economics as a pure inference-time wrapper around a frozen model:
+surprising failures get compressed into short, legible English rules instead of weights.
 
-1. **Number-game** (classify integers by a hidden arithmetic rule) — text embeddings can't see
-   primality, so *no* memory can work; the agent even crystallized an axiom telling itself to
-   guess randomly, which was locally correct.
-2. **TREC** (question-type classification) — retrieval alone wins (RAG 0.80 vs 0.75 no-memory):
-   the rig detects real memory benefits. But one retrieved exemplar settles each question, so
-   rules have nothing to add.
-3. **A purpose-built label-flip task** (4 seeds, held-out, frozen memory) — the detectability
-   gate stayed shut (0–1 axioms), so eigen-memory degenerated to *exactly* RAG's predictions
-   (0.617 vs 0.600 — the +0.017 comes from one seed's single wrong axiom, well within noise).
-   Two replicated discoveries explain why rules couldn't win: **C5** — with the *true* rule
-   pasted into context, the 4B executor scores 0.411, below the 0.58–0.60 nearest-neighbor
-   copy ceiling, on **every** seed (rule-memory unwinnable regardless of axiom quality); and
-   **C1 ⇒ ¬C3** — measuring retrieval the way the protocol actually retrieves showed that
-   making a rule embedding-visible makes it retrieval-visible too, so copying never fell to
-   chance in the first place.
+Four controlled experiments ask where that beats plain retrieval.
+
+**It never does — and the instrumented reasons why are the deliverable.**
+
+| # | Experiment | Verdict | Why |
+|---|------------|---------|-----|
+| 1 | **Number-game** — classify integers by a hidden arithmetic rule | tie | Substrate is blind to the rule: text embeddings can't see primality, so *no* memory can work. |
+| 2 | **TREC** — question-type classification | RAG wins (0.80 vs 0.75) | The rig detects real memory benefits — but one retrieved exemplar settles each question, so rules have nothing to add. |
+| 3 | **Label-flip** — purpose-built, 4 seeds, held-out | exact tie | The gate stayed shut; eigen-memory degenerated to *exactly* RAG's predictions. **C5** + **C1 ⇒ ¬C3** explain why (below). |
+| 4 | **Rule-Shift** — the rule flips mid-run, 12B executor, 5 seeds | **miss** — Δ+0.078 vs a +0.10 pre-registered bar | Gate fired on 1 of 5 seeds. But *conditional on detection*, the crystallized rule beat copying **0.911 vs 0.522**. |
+
+Experiment 1 is a substrate failure and 2 is a task failure — neither says anything about
+rule-compression itself. Experiments **3 and 4 are the real results**:
+
+- **Flip (3)** produced two replicated discoveries. **C5** — with the *true* rule pasted into
+  context, the 4B executor scores 0.411, below the 0.58–0.60 nearest-neighbor copy ceiling, on
+  **every** seed, making rule-memory unwinnable regardless of axiom quality. And **C1 ⇒ ¬C3** —
+  measuring retrieval the way the protocol actually retrieves showed that making a rule
+  embedding-visible makes it retrieval-visible too, so copying never fell to chance in the
+  first place.
+- **Rule-Shift (4)** broke copying with *time* instead of geometry, on a 12B executor that
+  clears the C5 boundary. It missed its pre-registered bar, and the autopsy is the finding:
+  the gate-shut seeds sit at **noise-level contrast** — signal-starved, not threshold-starved.
+  The bottleneck is the featurization, not the threshold. ([Details below](#act-three--rule-shift-breaking-copying-with-time-ran-verdict-miss-with-one-loud-exception).)
 
 Along the way: **four** bugs that silently corrupted the signal (three made "surprise" a
 constant; the fourth injected the model's raw chain-of-thought into the arm under test — each
@@ -175,12 +182,17 @@ bottleneck, and the bottleneck is the featurization, not the threshold. Full led
 
 ## Run it yourself
 
-**Prerequisites:** Docker, [Ollama](https://ollama.com), and [uv](https://docs.astral.sh/uv/).
+**Prerequisites:** Docker, [Ollama](https://ollama.com) (running locally — everything talks to
+`localhost:11434`), and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 # 1. Models (local, ~3-4 GB)
 ollama pull gemma3:4b
 ollama pull embeddinggemma
+
+# Only needed for the Rule-Shift experiment (act three): a ~8 GB executor that
+# clears the C5 boundary gemma3:4b fails. Skip if you're only running 1-3.
+ollama pull gemma4:12b
 
 # 2. Config
 cp .env.example .env            # defaults work out of the box
@@ -197,6 +209,10 @@ uv run python simulate.py                    # number-game (default)
 TASK=trec uv run python simulate.py          # TREC question classification
 uv run python guardrail_flip.py 42           # flip-task pre-run gates (probe AUC, copy ceiling m)
 uv run python run_flip_experiment.py 42      # the 4-arm flip experiment (incl. Oracle)
+
+# Act three — Rule-Shift (needs gemma4:12b; ~1-2 h per seed)
+uv run python guardrail_shift.py 42          # pre-run gates for the shift task
+uv run python run_shift_experiment.py 42     # the 5-arm shift experiment (incl. recency kill arm)
 
 # 6. Generate the plots
 uv run python plot_results.py
@@ -256,13 +272,28 @@ reviewer would veto — which is the auditability argument working).
 ## Repository layout
 
 ```
+# Experiment entrypoints
 simulate.py                     # number-game / TREC experiment: 3 arms x N seeds
 run_flip_experiment.py          # the 4-arm flip experiment (Baseline/Oracle/RAG/Eigen)
-guardrail_flip.py               # pre-run gates measured under protocol conditions
+run_shift_experiment.py         # act three: the Rule-Shift experiment (incl. recency kill arm)
+
+# Pre-run gates and qualification (cheap, run before spending LLM budget)
+guardrail_flip.py               # flip-task gates measured under protocol conditions
+guardrail_shift.py              # Rule-Shift gates G1 + G2 — no LLM, no Postgres
+run_rfmu.py                     # RFmu: qualifies an executor against the C5 boundary
+
+# Analysis of committed artifacts
 aggregate_flip.py               # multi-seed aggregation + C5 gate from guardrail artifacts
+derisk_pilot.py                 # complaint-driven pilot checks (no new LLM arms)
 run_trec_verify.py              # re-verifies the TREC one-true-axiom claim
-gate_roc.py                     # synthetic ROC of the real crystallization gate
 plot_results.py                 # learning curve, memory cost, eigen-spectrum
+
+# Gate calibration (synthetic ROC of the real crystallization gate)
+gate_roc.py                     # v1: streak-over-max-edge, the flip-era estimator
+gate_roc_mean.py                # the 2026-07-17 mean-contrast amendment
+gate_roc_v2.py                  # v2: evidence accumulation — the act-three autopsy
+ungated_ablation.py             # bypasses the gate entirely: was the signal there at all?
+
 schema.sql                      # episodic_buffer + semantic_core (pgvector)
 src/config.py                   # env-driven DB / Ollama / embedding-model config
 src/dataset.py                  # number-game + TREC loader + flip-task generator

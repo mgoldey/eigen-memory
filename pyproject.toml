@@ -10,7 +10,6 @@ dependencies = [
     "openai>=1.0.0",
     "psycopg2-binary>=2.9.0",
     "python-dotenv>=1.0.0",
-    "torch>=2.6, <2.7",
     "pgvector>=0.2.0",
     "matplotlib>=3.10.8",
 ]
@@ -21,6 +20,10 @@ build-backend = "hatchling.build"
 
 [tool.uv]
 package = true
+
+[tool.pytest.ini_options]
+# scratch/ holds throwaway probes that hit a live Ollama; only tests/ is the suite.
+testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/eigen_memory_agent"]
