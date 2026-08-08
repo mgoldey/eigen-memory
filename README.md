@@ -309,3 +309,8 @@ results_prefix_bug/             # the compromised first multi-seed run, kept as 
 
 *Built with heavy LLM pair-work; every theoretical claim is enforced by tests, and every number
 in the docs traces to a committed artifact or is labeled as a live smoke run.*
+
+## License
+
+[MIT](LICENSE). Datasets are downloaded at runtime, not redistributed here, and keep their own
+terms — see [docs/DATASETS.md](docs/DATASETS.md).
