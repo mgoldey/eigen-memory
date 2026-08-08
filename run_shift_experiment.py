@@ -52,6 +52,7 @@ from src.config import get_db_string
 from src.dataset import (N_SHIFT_PRE, get_labels, load_shift, shift_oracle_text,
                          shift_rules)
 from src.eigen_memory_agent.agent import AgenticMemoryLoop, parse_prediction
+from src import paths
 
 SEED = int(sys.argv[1]) if len(sys.argv) > 1 else 42
 BATCH = 10
@@ -181,7 +182,7 @@ def main():
     # Crash resilience: each arm resets the DB and is independent, so results
     # are dumped after every arm and completed arms are skipped on relaunch
     # (the first pilot attempt died to a mid-run reboot with nothing on disk).
-    out_path = f"comparison_results.shift.{SEED}.json"
+    out_path = paths.shift(f"comparison_results.shift.{SEED}.json")
     if os.path.exists(out_path):
         with open(out_path) as f:
             prev = json.load(f)

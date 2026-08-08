@@ -25,6 +25,7 @@ import numpy as np
 
 from gate_roc import _NullConn, _NullLLM
 from src.eigen_memory_agent.memory_kernel import EigenMemoryKernel
+from src import paths
 
 D = 768
 SNRS = [0.0, 0.5, 1.0, 2.0, 4.0]
@@ -112,7 +113,7 @@ def main():
     results["specificity_pass"] = all(s <= 0.05 for s in spec)
     print(f"\nspecificity (snr=0 fire rate): {spec} -> "
           f"{'PASS (<= 0.05 everywhere)' if results['specificity_pass'] else 'FAIL'}")
-    with open("gate_roc_mean.json", "w") as f:
+    with open(paths.calibration("gate_roc_mean.json"), "w") as f:
         json.dump(results, f, indent=2)
     print("Wrote gate_roc_mean.json")
 

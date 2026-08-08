@@ -43,6 +43,7 @@ from src.dataset import load_shift, shift_rules
 from src.eigen_memory_agent.memory_kernel import (
     EigenMemoryKernel, _mean_contrast, _unit,
 )
+from src import paths
 
 EXECUTOR = "gemma4:12b"
 EXTRA_BODY = {"reasoning_effort": "none"}
@@ -123,7 +124,7 @@ def run_seed(client, seed):
            "ratio": lam1 / edge, "n_fail_window": len(kernel.fail_records),
            "n_succ_window": len(kernel.succ_records),
            "rule": rule, "pre_rule": pre_rule, "post_rule": post_rule}
-    with open(f"ungated_ablation.{seed}.json", "w") as f:
+    with open(paths.shift(f"ungated_ablation.{seed}.json"), "w") as f:
         json.dump(out, f, indent=2)
     return out
 

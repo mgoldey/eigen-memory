@@ -24,6 +24,7 @@ import psycopg2
 from src.config import get_db_string
 from src.dataset import get_labels, load_dataset
 from src.eigen_memory_agent.agent import AgenticMemoryLoop, parse_prediction
+from src import paths
 
 SEED = int(sys.argv[1]) if len(sys.argv) > 1 else 42
 N_TRIALS = 120
@@ -73,7 +74,7 @@ def main():
         "n_axioms": len(axioms),
         "axioms": axioms,
     }
-    with open(f"trec_verify.{SEED}.json", "w") as f:
+    with open(paths.static(f"trec_verify.{SEED}.json"), "w") as f:
         json.dump(result, f, indent=2)
 
     print(f"\n=== TREC VERIFY (seed {SEED}, fixed code) ===")

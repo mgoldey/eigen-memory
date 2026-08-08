@@ -24,6 +24,7 @@ import json
 import numpy as np
 
 from src.eigen_memory_agent.memory_kernel import EigenMemoryKernel
+from src import paths
 
 D = 768
 SNRS = [0.0, 1.0, 2.0, 4.0, 8.0, 16.0]  # spike eigenvalue as a multiple of the noise edge
@@ -194,7 +195,7 @@ def main():
     print("\nstability is the binding constraint wherever detect_rate >> fire_rate; "
           "see mean_cross_check_cos per cell in gate_roc.json (threshold 0.95)")
 
-    with open("gate_roc.json", "w") as f:
+    with open(paths.calibration("gate_roc.json"), "w") as f:
         json.dump(results, f, indent=2)
     print("Wrote gate_roc.json")
 

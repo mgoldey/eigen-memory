@@ -90,7 +90,7 @@ If nothing local passes, that is itself the publishable boundary: "below ~X B pa
 exemplar-copying dominates rule-following, and no rule-memory architecture can pay."
 
 > **Amendment (2026-07-16, after the first two RFμ runs — `run_rfmu.py`,
-> `rfmu.<model>.json`).** The C condition's premise broke on contact: with a global-polarity
+> `results/calibration/rfmu.<model>.json`).** The C condition's premise broke on contact: with a global-polarity
 > rule, 5 correctly-labeled exemplars are enough for a strong model to *induce* the rule, so
 > C measures few-shot induction, not nearest-neighbor copying — gemma4-8B scored C = 0.933
 > and qwen3.5:9b C = 0.917, far above the geometric copy ceiling (~0.8 polarity match), which
@@ -162,7 +162,7 @@ post-shift adaptation trials → freeze → 90 held-out post-shift items. 5 seed
 > pilot spend: **G2a** copy_acc on requests (the shifted row) ≤ 0.45 [passes 5/5], and
 > **G2b** the Recency_RAG policy ceiling (top-5, newest wins) ≤ executor R − 0.10 = 0.883,
 > so a correct axiom retains decision-rule headroom over the kill arm [passes 5/5; ceiling
-> 0.689–0.778]. The strict number is kept in every guardrail.shift.<seed>.json as g2_strict.
+> 0.689–0.778]. The strict number is kept in every results/shift/guardrail.shift.<seed>.json as g2_strict.
 >
 > **Amendment (2026-07-17, pre-pilot, by analysis).** G3's pre-registered estimator
 > (query-embedding **cPCA**) is provably blind to the failure structure this design creates.
@@ -210,11 +210,11 @@ Control_RAG 0.556 · Recency_RAG 0.522 · **Treatment_Eigen 0.911** (requests 1.
 Oracle): 0.056 — just misses. G3 fired exactly as pre-registered (a marginal pre-shift
 detection was rejected by the streak rule when λ dipped back under the edge; then three
 consecutive post-shift detections, stable direction, one crystallization; surprise spiked
-0.30 → 9.78 NLL at the shift boundary). Artifacts: comparison_results.shift.42.json,
-derisk.shift.42.json, gate_roc_mean.json, guardrail.shift.<seed>.json ×5.
+0.30 → 9.78 NLL at the shift boundary). Artifacts: results/shift/comparison_results.shift.42.json,
+results/shift/derisk.shift.42.json, results/calibration/gate_roc_mean.json, results/shift/guardrail.shift.<seed>.json ×5.
 
 **G4 caught a real mechanism bug on the first attempt** (archived:
-comparison_results.shift.42.cotbug.json): the crystallizer's 400-token budget ran out
+results/shift/comparison_results.shift.42.cotbug.json): the crystallizer's 400-token budget ran out
 inside its <thought> block and 1.4k chars of truncated CoT were stored and injected —
 scoring 0.856, causally effective but not the claimed mechanism. Fix: retry for a bare
 RULE line, never store scaffolding. The rerun crystallized a genuinely legible prose rule
@@ -236,7 +236,7 @@ Complaints pre-empted, with the artifact that answers each:
   recency-weighting is hard to execute even with newest-first ordering and a staleness hint.
 - *"You amended the G3 estimator mid-stream"* — amended BEFORE the pilot, by arithmetic
   (cPCA is blind to location differences); and now calibrated to the same standard as the
-  original gate: gate_roc_mean.json shows noise fire-rate 0.00–0.05 and fire-rate 1.00 from
+  original gate: results/calibration/gate_roc_mean.json shows noise fire-rate 0.00–0.05 and fire-rate 1.00 from
   snr 0.5 at the pilot's n_fail≈30, at live cadence with the exact pilot kernel config.
 - *"45% parse-fallback = parsing luck"* — inverted: Control_RAG 0.75 and Recency_RAG 0.69
   are HIGHER (exemplar-echo is a property of exemplar-laden prompts); one identical parser
@@ -279,7 +279,7 @@ false-fire target. The stability and novelty gates are untouched by this amendme
   (16 checks × 10 trials, window 60), measured by simulation with the overlapping-window
   dependence included — consecutive windows share ~50/60 residuals, which correlates even
   noise directions and inflates the stable flag, so θ must absorb that; an analytical
-  threshold would be anti-conservative. Calibration: `gate_roc_v2.py` → `gate_roc_v2.json`
+  threshold would be anti-conservative. Calibration: `gate_roc_v2.py` → `results/calibration/gate_roc_v2.json`
   (v1 and v2 run paired on identical observation streams).
 
 **Integrity protocol.** The trigger came from live-seed telemetry, so this is a post-hoc
@@ -292,7 +292,7 @@ same primary endpoint (Δ vs Recency_RAG ≥ +0.10 across seeds), same G4 axiom 
 and is reported alongside v1 as "v2, amended after 2 gate-shut seeds", never replacing it.
 A v2 result that still misses is reported as a miss.
 
-**Outcome (2026-07-26, gate_roc_v2.json) — the calibration cancelled the re-run.**
+**Outcome (2026-07-26, results/calibration/gate_roc_v2.json) — the calibration cancelled the re-run.**
 θ landed at 13.16 (per-cell q95 of armed noise evidence 7.44/10.14/13.15, vs a null
 stationary mean of ~5 — the overlapping-window dependence roughly doubles what
 independence would predict, vindicating the empirical-calibration requirement). At that
@@ -318,7 +318,7 @@ called it right).
 
 All five seeds complete (42 pilot + 2, 18, 23, 7 run 2026-07-25/26, seeds sequential,
 ~3 h each; one OOM event killed llama-server mid-seed-23 and the run survived via
-respawn — comparison_results.shift.<seed>.json ×5).
+respawn — results/shift/comparison_results.shift.<seed>.json ×5).
 
 | seed | gate | Eigen | Recency_RAG | Control_RAG | Δ (primary) |
 |-----:|------|------:|------------:|------------:|------------:|

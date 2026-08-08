@@ -31,6 +31,7 @@ from sklearn.model_selection import cross_val_score
 
 from src.config import OLLAMA_BASE_URL, EMBEDDING_MODEL
 from src.dataset import load_flip
+from src import paths
 
 N_PROBE = 300      # train-distribution sample for the linear probes
 N_TRAIN = 100      # must match run_flip_experiment.N_TRAIN (the memory store)
@@ -92,7 +93,7 @@ def main():
     print(f"\nC1 {'PASS' if ok_c1 else 'FAIL'} | C3 {'PASS' if ok_c3 else 'FAIL'}"
           f" -> {'TASK IS IN THE EIGEN WINDOW' if ok_c1 and ok_c3 else 'DEAD ON ARRIVAL — retune the generator'}")
 
-    with open(f"guardrail.flip.{SEED}.json", "w") as f:
+    with open(paths.flip(f"guardrail.flip.{SEED}.json"), "w") as f:
         json.dump({
             "seed": SEED, "n_probe": N_PROBE, "n_store": N_TRAIN, "n_query": N_TEST,
             "embedding_model": EMBEDDING_MODEL,

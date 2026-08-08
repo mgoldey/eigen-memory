@@ -95,7 +95,7 @@ Every task runs the same agent with arms toggled:
 
 ¹ final-batch accuracy, mean of 2 seeds (42, 7) — bands overlap heavily; see [FINDINGS.md](FINDINGS.md).
 ² held-out accuracy, mean of 4 seeds (42, 2, 18, 23), n=45 each, temperature 0; raw data
-`comparison_results.flip.<seed>.json`, aggregate `comparison_results.flip.aggregate.json`.
+`results/flip/comparison_results.flip.<seed>.json`, aggregate `results/flip/comparison_results.flip.aggregate.json`.
 (An earlier, compromised version of this run is archived in `results_prefix_bug/` — see below.)
 
 The **flip task is the key result**, though not the way it was designed to be. It was built to
@@ -132,7 +132,7 @@ So the honest scope: the *compression* side works, is calibrated, and refuses to
 noise; the *decompression* side — a model that can actually read and apply a rule — is the
 frontier, and a 4B model isn't it. This repo measures that boundary instead of claiming a win.
 
-![Learning curve](learning_curve.png)
+![Learning curve](figures/learning_curve.png)
 
 **The most revealing early artifact** — before the theory correction, the old kernel crystallized
 this axiom on the number-game:
@@ -148,9 +148,9 @@ no learnable signal it could act on — then rationalized surrender. (Full story
 <details>
 <summary>Memory cost + eigen-spectrum (supplementary)</summary>
 
-![Memory cost](memory_cost.png)
+![Memory cost](figures/memory_cost.png)
 
-![Eigen spectrum](eigen_spectrum.png)
+![Eigen spectrum](figures/eigen_spectrum.png)
 
 </details>
 
@@ -297,6 +297,7 @@ ungated_ablation.py             # bypasses the gate entirely: was the signal the
 schema.sql                      # episodic_buffer + semantic_core (pgvector)
 src/config.py                   # env-driven DB / Ollama / embedding-model config
 src/dataset.py                  # number-game + TREC loader + flip-task generator
+src/paths.py                    # canonical artifact locations (results/, figures/)
 src/eigen_memory_agent/
   agent.py                      # the agent loop: predict, measure surprise, learn
   memory_kernel.py              # contrastive residual PCA -> gated axiom crystallization
@@ -304,6 +305,13 @@ docs/                           # theory, task design, prior art, blog post, nex
 tests/
   test_kernel_theory.py         # the theory as executable tests (see docs/THEORY.md)
   test_kernel_consolidation.py  # kernel unit tests (fake DB/LLM)
+
+# Committed artifacts — every number in the docs traces to one of these
+results/static/                 # number-game + TREC runs
+results/flip/                   # label-flip: per-seed runs, guardrails, aggregate
+results/shift/                  # Rule-Shift: per-seed runs, guardrails, derisk
+results/calibration/            # gate ROC sweeps (v1/mean/v2) + RFmu qualification
+figures/                        # learning curve, memory cost, eigen-spectrum
 results_prefix_bug/             # the compromised first multi-seed run, kept as the record
 ```
 

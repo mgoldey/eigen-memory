@@ -151,7 +151,7 @@ stability gate — not the eigenvalue edge — is the binding constraint at real
 compound gate trades an ~8× detection margin for measured-zero false positives. Implication
 for future designs: to detect weaker real axes, scale the stability threshold to the expected
 estimator wobble at the current sample count (a sample-size-aware cosine), rather than
-lowering the edge. Raw sweep: `gate_roc.json`.
+lowering the edge. Raw sweep: `results/calibration/gate_roc.json`.
 
 The corrected trigger — which finally earns the "eigen" in eigen-memory:
 

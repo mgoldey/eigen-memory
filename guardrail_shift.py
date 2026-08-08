@@ -39,9 +39,10 @@ from sklearn.model_selection import cross_val_score
 
 from src.config import OLLAMA_BASE_URL, EMBEDDING_MODEL
 from src.dataset import load_shift, shift_rules
+from src import paths
 
 SEED = int(sys.argv[1]) if len(sys.argv) > 1 else 42
-EXECUTOR_RFMU = "rfmu.gemma4_12b.json"  # the designated executor's artifact
+EXECUTOR_RFMU = str(paths.calibration("rfmu.gemma4_12b.json"))  # the designated executor's artifact
 
 
 def executor_r():
@@ -115,7 +116,7 @@ def main():
     verdict = g1 and g2
     print(f"\n{'G1+G2(amended) PASS — proceed to the pilot seed' if verdict else 'GATE FAILED — stop before the pilot'}")
 
-    with open(f"guardrail.shift.{SEED}.json", "w") as f:
+    with open(paths.shift(f"guardrail.shift.{SEED}.json"), "w") as f:
         json.dump({
             "seed": SEED, "embedding_model": EMBEDDING_MODEL,
             "pre_rule": pre, "post_rule": post,

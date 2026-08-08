@@ -33,7 +33,7 @@ that isolates *why* the idea doesn't win — not a victory lap.
 | Control_RAG (retrieval) | 0.60 | 0.46 |
 | Treatment_Eigen (retrieval + axioms) | 0.60 | **0.55** |
 
-![Learning curve](learning_curve.png)
+![Learning curve](figures/learning_curve.png)
 
 **Read the error bands, not the lines.** Treatment_Eigen's cumulative accuracy (0.55) edges out
 RAG (0.46) and Baseline (0.47) by ~9 points — but the ±1 std bands of all three arms **overlap
@@ -109,7 +109,7 @@ document are from the **old** kernel and are kept as the record of what it produ
 
 ### Memory cost
 
-![Memory cost](memory_cost.png)
+![Memory cost](figures/memory_cost.png)
 
 Eigen stores strictly more than RAG — every episode RAG keeps, **plus** the crystallized axioms
 (~15–20 per run) and their eigenvectors. So Eigen pays a higher memory and token cost for, here,
@@ -136,8 +136,8 @@ surprise gating, same PCA kernel — only `src/dataset.py` changed.
 | Control_RAG (retrieval) | **0.80** |
 | Treatment_Eigen (retrieval + axioms) | 0.75 |
 
-(Raw TREC numbers: `comparison_results.trec.json`. The number-game's are in
-`comparison_results.json`, which the committed plots are rendered from.)
+(Raw TREC numbers: `results/static/comparison_results.trec.json`. The number-game's are in
+`results/static/comparison_results.json`, which the committed plots are rendered from.)
 
 **Mechanism health:** clean run — **0 embedding failures**, surprise NLL genuinely varied
 (batch averages 0.89 → 2.20), and the eigen layer fired for real (**19 axioms crystallized,
@@ -213,9 +213,9 @@ Three replicated findings:
    residual failures are high-rank per-topic confusions — nothing rank-1 to find.
 
 Meanwhile the positive mechanism claim was re-verified on the final code: 120 TREC trials →
-exactly one axiom, and it is true (`trec_verify.42.json`). Full design and guardrail history:
+exactly one axiom, and it is true (`results/static/trec_verify.42.json`). Full design and guardrail history:
 [docs/C1_C3_TASK.md](docs/C1_C3_TASK.md) and [docs/BLOG_POST.md](docs/BLOG_POST.md); raw data
-`comparison_results.flip.<seed>.json` + aggregate.
+`results/flip/comparison_results.flip.<seed>.json` + aggregate.
 
 ## The real finding: the experiment cannot answer the question it asks
 

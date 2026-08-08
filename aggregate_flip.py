@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from src import paths
 
 ARMS = ["Baseline", "Oracle_Rule", "Control_RAG", "Treatment_Eigen"]
 
@@ -31,8 +32,8 @@ def _load(path):
 
 def main():
     seeds = [int(s) for s in sys.argv[1:]] or [42, 2, 18, 23]
-    runs = {s: _load(f"comparison_results.flip.{s}.json") for s in seeds}
-    guards = {s: _load(f"guardrail.flip.{s}.json") for s in seeds}
+    runs = {s: _load(paths.flip(f"comparison_results.flip.{s}.json")) for s in seeds}
+    guards = {s: _load(paths.flip(f"guardrail.flip.{s}.json")) for s in seeds}
 
     n_test = runs[seeds[0]]["n_test"]
     se_item = 0.5 / np.sqrt(n_test)  # worst-case SE of one proportion at n_test
@@ -109,7 +110,7 @@ def main():
         "paired_eigen_minus_rag": [float(x) for x in eigen_minus_rag],
         "paired_oracle_minus_ceiling": [float(x) for x in oracle_minus_ceiling],
     }
-    Path("comparison_results.flip.aggregate.json").write_text(json.dumps(out, indent=2))
+    paths.flip("comparison_results.flip.aggregate.json").write_text(json.dumps(out, indent=2))
     print("\nWrote comparison_results.flip.aggregate.json")
 
 

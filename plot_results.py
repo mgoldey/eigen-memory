@@ -13,6 +13,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from src import paths
 
 COLORS = {
     "Baseline": "#888888",
@@ -22,7 +23,7 @@ COLORS = {
 
 
 def _load():
-    with open("comparison_results.json", "r") as f:
+    with open(paths.static("comparison_results.json"), "r") as f:
         return json.load(f)
 
 
@@ -54,7 +55,7 @@ def plot_learning_curve(data):
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig("learning_curve.png", dpi=120)
+    plt.savefig(paths.figure("learning_curve.png"), dpi=120)
     print("Saved learning_curve.png")
 
 
@@ -74,7 +75,7 @@ def plot_memory_cost(data):
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig("memory_cost.png", dpi=120)
+    plt.savefig(paths.figure("memory_cost.png"), dpi=120)
     print("Saved memory_cost.png")
 
 
@@ -97,7 +98,7 @@ def plot_eigen_spectrum(data):
     plt.xlabel("Crystallization Snapshot")
     plt.ylabel("Principal Component")
     plt.tight_layout()
-    plt.savefig("eigen_spectrum.png", dpi=120)
+    plt.savefig(paths.figure("eigen_spectrum.png"), dpi=120)
     print("Saved eigen_spectrum.png")
 
 

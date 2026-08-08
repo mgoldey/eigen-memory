@@ -149,7 +149,7 @@ are measurable with just the generator and the embedding model — no LLM, no ag
   > whatever attribute generalizes across the split dominates cross-split similarity, and
   > that's the rule attribute) is formalized in [NEXT_EXPERIMENT.md](NEXT_EXPERIMENT.md).
   > `guardrail_flip.py` now measures under protocol conditions and writes
-  > `guardrail.flip.<seed>.json` for the aggregator.
+  > `results/flip/guardrail.flip.<seed>.json` for the aggregator.
 
 Do **not** substitute a variance-share check for the m measurement: the simulation showed a B
 at 1/10th the topic scale — thoroughly sub-dominant — still yielding **m = 0.87** against a
@@ -305,8 +305,8 @@ Held-out means ± std: Baseline 0.289 ± 0.048, Oracle 0.411 ± 0.103, **RAG 0.6
 Eigen 0.617 ± 0.106. **H1 not supported** — 0–1 axioms per seed; on 3/4 seeds zero axioms and
 Eigen ≡ RAG prediction-for-prediction; the one fired axiom (seed 18) named the polarity axis
 with an inverted mapping. C5 fails 4/4 (see the executor gate above). Aggregate:
-`comparison_results.flip.aggregate.json`; per-seed `comparison_results.flip.<seed>.json` +
-`guardrail.flip.<seed>.json`. Write-up: [BLOG_POST.md](BLOG_POST.md).
+`results/flip/comparison_results.flip.aggregate.json`; per-seed `results/flip/comparison_results.flip.<seed>.json` +
+`results/flip/guardrail.flip.<seed>.json`. Write-up: [BLOG_POST.md](BLOG_POST.md).
 
 ## What this task turned out to prove
 

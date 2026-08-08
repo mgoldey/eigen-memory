@@ -34,6 +34,7 @@ from scipy.stats import binomtest
 
 from src.config import OLLAMA_BASE_URL
 from src.dataset import load_flip
+from src import paths
 
 # Native Ollama endpoint (not the OpenAI-compat one): thinking-family models
 # (gemma4, qwen3.5) burn the whole completion budget on a reasoning stream the
@@ -223,7 +224,7 @@ def main():
           f"{' and passes the strict gate too' if strict else ''}")
 
     safe = MODEL.replace(":", "_").replace("/", "_")
-    with open(f"rfmu.{safe}.json", "w") as f:
+    with open(paths.calibration(f"rfmu.{safe}.json"), "w") as f:
         json.dump({"model": MODEL, "seed": SEED, "n_items": N_ITEMS,
                    "polarity_match_rate": POLARITY_MATCH_RATE, "acc": acc,
                    "r_best_format": r_best_fmt,

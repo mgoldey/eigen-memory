@@ -37,6 +37,7 @@ from gate_roc import _NullConn, _NullLLM
 from src.eigen_memory_agent.memory_kernel import (
     EigenMemoryKernel, _mean_contrast, _unit,
 )
+from src import paths
 
 D = 768
 SNRS = [0.0, 0.15, 0.25, 0.35, 0.5, 1.0, 2.0]
@@ -181,7 +182,7 @@ def main():
                "n_perm_v2": N_PERM_V2, "fp_budget": FP_BUDGET,
                "snrs": SNRS, "n_fails": N_FAILS, "replicates": REPLICATES,
                "kernel_cfg": KCFG, "cells": {}}
-    edge_ref = json.load(open("gate_roc_mean.json"))["cells"]
+    edge_ref = json.load(open(paths.calibration("gate_roc_mean.json")))["cells"]
     print(f"{'n_fail':>7} | " + " | ".join(f"snr={s:<5}" for s in SNRS)
           + "   (v1 fire / v2 fire / lam-edge ratio)")
     print("-" * 110)
@@ -215,7 +216,7 @@ def main():
     results["v2_specificity_pass"] = all(s <= FP_BUDGET for s in spec)
     print(f"v2 specificity (snr=0 fire rate): {spec} -> "
           f"{'PASS' if results['v2_specificity_pass'] else 'FAIL'}")
-    with open("gate_roc_v2.json", "w") as f:
+    with open(paths.calibration("gate_roc_v2.json"), "w") as f:
         json.dump(results, f, indent=2)
     print("Wrote gate_roc_v2.json")
 

@@ -6,6 +6,7 @@ import numpy as np
 from src.eigen_memory_agent.agent import AgenticMemoryLoop, clean_prediction
 from src.dataset import load_dataset, get_labels
 from src.config import get_db_string
+from src import paths
 
 # Configuration
 DB_STRING = get_db_string()
@@ -135,7 +136,7 @@ def main(seeds=SEEDS):
         if "eigen_spectrum" in per_seed[0]:
             results[arm]["eigen_spectrum"] = per_seed[0]["eigen_spectrum"]
 
-    with open("comparison_results.json", "w") as f:
+    with open(paths.static("comparison_results.json"), "w") as f:
         json.dump(results, f, indent=2)
     print("\nComparison Complete. Data saved to comparison_results.json", flush=True)
 

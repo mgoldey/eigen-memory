@@ -1,6 +1,6 @@
 {
   "seed": 42,
-  "results_path": "comparison_results.shift.42.json",
+  "results_path": "results/shift/comparison_results.shift.42.json",
   "paired_mcnemar": {
     "Recency_RAG": {
       "treatment_only": 39,

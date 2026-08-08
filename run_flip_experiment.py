@@ -31,6 +31,7 @@ import psycopg2
 from src.config import get_db_string
 from src.dataset import flip_oracle_text, get_labels, load_dataset
 from src.eigen_memory_agent.agent import AgenticMemoryLoop, parse_prediction
+from src import paths
 
 SEED = int(sys.argv[1]) if len(sys.argv) > 1 else 42
 N_TRAIN = 100
@@ -140,7 +141,7 @@ def main():
     results["arms"]["Treatment_Eigen"] = run_arm(
         "Treatment_Eigen", conn, train_data, test_data, retrieval=True, eigen=True)
 
-    with open(f"comparison_results.flip.{SEED}.json", "w") as f:
+    with open(paths.flip(f"comparison_results.flip.{SEED}.json"), "w") as f:
         json.dump(results, f, indent=2)
 
     print("\n=== HELD-OUT SUMMARY (frozen memory, disjoint surface vocabulary) ===")

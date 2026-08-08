@@ -132,7 +132,7 @@ First outing of the rebuilt kernel, on the two old tasks, with a falsifiable pre
   stay closed. It did — **zero axioms**, where the old kernel emitted 15–20.
 - **TREC, 120 trials** (question-type rule, embedding-visible): a real axis should clear the
   edge. It did — exactly one axiom. Re-verified end-to-end on the final, fully-debugged code
-  (`run_trec_verify.py`, archived in `trec_verify.42.json`): one axiom, strength 1.13, zero
+  (`run_trec_verify.py`, archived in `results/static/trec_verify.42.json`): one axiom, strength 1.13, zero
   missing-token probes, and the rule is true:
 
 > *"Questions requiring numerical answers should be labeled NUM, and questions requiring

@@ -13,6 +13,7 @@ Usage: uv run python derisk_pilot.py [seed] [results-path]
 """
 
 import json
+import os
 import sys
 
 import numpy as np
@@ -21,9 +22,10 @@ from scipy.stats import binomtest
 
 from src.config import OLLAMA_BASE_URL, EMBEDDING_MODEL
 from src.dataset import N_SHIFT_PRE, load_shift
+from src import paths
 
 SEED = int(sys.argv[1]) if len(sys.argv) > 1 else 42
-PATH = sys.argv[2] if len(sys.argv) > 2 else f"comparison_results.shift.{SEED}.json"
+PATH = sys.argv[2] if len(sys.argv) > 2 else paths.shift(f"comparison_results.shift.{SEED}.json")
 
 
 def mcnemar(a, b):
@@ -66,9 +68,11 @@ def main():
     ceil_maj = float(np.mean(np.array(maj) == true))
     print(f"perfect-staleness-filter copy ceilings: nn={ceil_nn:.3f} top5-majority={ceil_maj:.3f}")
 
-    out = {"seed": SEED, "results_path": PATH, "paired_mcnemar": paired,
+    # Repo-relative so the artifact is portable across checkouts.
+    rel_path = os.path.relpath(PATH, paths.ROOT)
+    out = {"seed": SEED, "results_path": rel_path, "paired_mcnemar": paired,
            "ideal_copy_ceiling_nn": ceil_nn, "ideal_copy_ceiling_top5maj": ceil_maj}
-    with open(f"derisk.shift.{SEED}.json", "w") as f:
+    with open(paths.shift(f"derisk.shift.{SEED}.json"), "w") as f:
         json.dump(out, f, indent=2)
     print(f"Wrote derisk.shift.{SEED}.json")
 
