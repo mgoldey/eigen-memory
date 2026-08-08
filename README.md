@@ -340,6 +340,7 @@ results/shift/                  # Rule-Shift: per-seed runs, guardrails, derisk
 results/calibration/            # trigger sensitivity sweeps + executor pre-test results
 figures/                        # learning curve, memory cost, eigen-spectrum
 results_prefix_bug/             # the compromised first multi-seed run, kept as the record
+                                #   (see its README for which two bugs corrupted it)
 ```
 
 *Built with heavy LLM pair-work; every theoretical claim is enforced by tests, and every number

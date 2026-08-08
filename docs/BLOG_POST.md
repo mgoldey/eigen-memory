@@ -323,7 +323,7 @@ The honest scope: this is **one seed and one crystallization event**, on a task 
 winnable (rank-1, embedding-visible — the visibility lesson applied in reverse). The
 crystallized rule is extensional — it enumerates markers rather than naming the
 request-vs-report concept — and the ablation that would isolate the spectral gate's value
-over a dumb "summarize recent failures every N batches" trigger hasn't run. The five-seed
+over a naive "summarize recent failures every N batches" trigger hasn't run. The five-seed
 pre-registered decision is next. But the mechanism's full loop — mistakes → gated detection →
 one legible sentence → exemplars retired → near-oracle accuracy — has now happened outside a
 thought experiment.
