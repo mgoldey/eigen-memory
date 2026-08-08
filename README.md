@@ -13,31 +13,39 @@ Four controlled experiments ask where that beats plain retrieval.
 |---|------------|---------|-----|
 | 1 | **Number-game** — classify integers by a hidden arithmetic rule | tie | Substrate is blind to the rule: text embeddings can't see primality, so *no* memory can work. |
 | 2 | **TREC** — question-type classification | RAG wins (0.80 vs 0.75) | The rig detects real memory benefits — but one retrieved exemplar settles each question, so rules have nothing to add. |
-| 3 | **Label-flip** — purpose-built, 4 seeds, held-out | exact tie | The gate stayed shut; eigen-memory degenerated to *exactly* RAG's predictions. **C5** + **C1 ⇒ ¬C3** explain why (below). |
+| 3 | **Label-flip** — purpose-built, 4 seeds, held-out | exact tie | The crystallization trigger ("the gate") never fired; eigen-memory degenerated to *exactly* RAG's predictions. Two structural reasons, both below. |
 | 4 | **Rule-Shift** — the rule flips mid-run, 12B executor, 5 seeds | **miss** — Δ+0.078 vs a +0.10 pre-registered bar | Gate fired on 1 of 5 seeds. But *conditional on detection*, the crystallized rule beat copying **0.911 vs 0.522**. |
 
 Experiment 1 is a substrate failure and 2 is a task failure — neither says anything about
 rule-compression itself. Experiments **3 and 4 are the real results**:
 
-- **Flip (3)** produced two replicated discoveries. **C5** — with the *true* rule pasted into
-  context, the 4B executor scores 0.411, below the 0.58–0.60 nearest-neighbor copy ceiling, on
-  **every** seed, making rule-memory unwinnable regardless of axiom quality. And **C1 ⇒ ¬C3** —
-  measuring retrieval the way the protocol actually retrieves showed that making a rule
-  embedding-visible makes it retrieval-visible too, so copying never fell to chance in the
-  first place.
-- **Rule-Shift (4)** broke copying with *time* instead of geometry, on a 12B executor that
-  clears the C5 boundary. It missed its pre-registered bar, and the autopsy is the finding:
-  the gate-shut seeds sit at **noise-level contrast** — signal-starved, not threshold-starved.
-  The bottleneck is the featurization, not the threshold. ([Details below](#act-three--rule-shift-breaking-copying-with-time-ran-verdict-miss-with-one-loud-exception).)
+- **Flip (3)** produced two replicated discoveries, both about *why* a rule couldn't win:
+  - **The model applies the rule worse than it copies.** Paste the *true* rule into the 4B
+    model's context and it scores 0.411 — worse than the 0.58–0.60 you get by blindly copying
+    the nearest stored
+    example's label, on **every** seed. If the executor applies a correct rule worse than it
+    copies, no amount of axiom quality can help. (Called **C5** in the docs.)
+  - **You can't have it both ways.** For rules to beat copying, the rule must be visible to the
+    embeddings (so the agent can find the pattern) but copying must *fail* (so there's something
+    to win). Measuring retrieval the way the protocol actually retrieves showed these can't
+    co-occur: making a rule visible to the embeddings makes it visible to retrieval too, so
+    copying never fell to chance in the first place. (Written **C1 ⇒ ¬C3** in the docs.)
+- **Rule-Shift (4)** broke copying with *time* instead of geometry, on a 12B model that *can*
+  apply a rule. It missed its pre-registered bar, and the autopsy is the finding: on the seeds
+  where the trigger never fired, the statistic it watches sits at noise level — nothing to
+  detect *in what it measures*, rather than a threshold set too high. The fix belongs in what
+  the trigger measures, not in where the bar sits.
+  ([Details below](#act-three--rule-shift-breaking-copying-with-time-ran-verdict-miss-with-one-loud-exception).)
 
 Along the way: **four** bugs that silently corrupted the signal (three made "surprise" a
 constant; the fourth injected the model's raw chain-of-thought into the arm under test — each
 caught by reading raw values and stored artifacts, not accuracy curves); a theory review that
 disproved the project's own original mechanism and replaced it with one where **every claim is
 an executable test** ([tests/test_kernel_theory.py](tests/test_kernel_theory.py)); a
-**measured ROC for the crystallization gate** (false-positive rate 0.00; the stability check,
-not the noise edge, is the binding constraint); and a one-line conclusion — *compress into
-weights when your model is small; compress into sentences when your model can read.*
+**measured ROC for the crystallization gate** (false-positive rate 0.00; what binds is the
+check that the detected direction reproduces, not the noise threshold); and a one-line
+conclusion — *compress into weights when your model is small; compress into sentences when
+your model can read.*
 
 Everything runs **locally**: `gemma3:4b` + `embeddinggemma` via Ollama, Postgres + `pgvector`.
 No API keys, no cloud. Full narrative: **[docs/BLOG_POST.md](docs/BLOG_POST.md)**.
@@ -87,11 +95,11 @@ Every task runs the same agent with arms toggled:
 
 | | Number-game | TREC | Label-flip (held-out, frozen memory) |
 |---|---|---|---|
-| Rule visible to text embeddings? | ✗ | ✓ | ✓ (probe AUC 0.95–0.97) |
+| Rule visible to text embeddings? | ✗ | ✓ | ✓ (a classifier fit on the embeddings recovers the rule attribute: AUC 0.95–0.97) |
 | One exemplar enough? | — | ✓ (copy ceiling high) | ✓ under honest measurement — copy ceiling 0.58–0.60 |
 | **RAG vs no-memory** | tie — 0.60 vs 0.70¹ | **RAG wins — 0.80 vs 0.75**¹ | **RAG wins — 0.60 vs 0.29**² |
 | **Eigen vs RAG** | tie¹ | loses — 0.75 vs 0.80¹ | exact tie — 0.62 vs 0.60 (0–1 axioms; identical predictions on 3/4 seeds)² |
-| Why rules can't win here | substrate blind to the rule | one exemplar already settles it | **C5 (0.41 Oracle < 0.59 ceiling, 4/4 seeds) + C1 ⇒ ¬C3** |
+| Why rules can't win here | embeddings can't see the rule | one exemplar already settles it | **model applies the rule worse than it copies** (0.41 with rule given < 0.59 copy ceiling, 4/4 seeds) **+ visible-to-embeddings ⇒ visible-to-retrieval** |
 
 ¹ final-batch accuracy, mean of 2 seeds (42, 7) — bands overlap heavily; see [FINDINGS.md](FINDINGS.md).
 ² held-out accuracy, mean of 4 seeds (42, 2, 18, 23), n=45 each, temperature 0; raw data
@@ -102,21 +110,24 @@ The **flip task is the key result**, though not the way it was designed to be. I
 sit in the one regime where rule-compression should win (rule embedding-visible, one exemplar
 *not* enough). Three replicated findings came out of running it honestly:
 
-1. **C5 — the executor gate.** An Oracle arm with the *true* rule pasted into context scores
-   0.411 ± 0.103, below the 0.578–0.600 nearest-neighbor label-copy ceiling, on **all four
-   seeds** (paired Oracle − ceiling = −0.178 ± 0.093). A 4B model applies a rule worse than
-   blind copying scores — so rule-memory cannot win here regardless of axiom quality.
-2. **C1 ⇒ ¬C3 — the static-task paradox.** The guardrail originally measured near-chance
-   copying with the *wrong queries*. Measured the way the protocol actually retrieves
-   (held-out queries, disjoint vocabulary, against the train store), nearest neighbors match
-   on the rule attribute itself (polarity: 0.73–0.89) — because whatever generalizes across
-   the split dominates cross-split similarity, and that's exactly the attribute the rule
-   depends on. Making a rule embedding-visible makes it retrieval-visible: the "eigen window"
-   closes as you open it. ([docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) formalizes this
-   and the escape routes.)
+1. **The model can't apply the rule** (**C5**, the executor gate). An Oracle arm with the
+   *true* rule pasted into context scores 0.411 ± 0.103, below the 0.578–0.600 label-copy
+   ceiling — the accuracy you'd get by ignoring the rule and copying the nearest stored
+   example's label — on **all four seeds** (paired difference −0.178 ± 0.093). A 4B model
+   applies a rule worse than blind copying scores, so rule-memory cannot win here regardless
+   of axiom quality.
+2. **Visible to the embeddings ⇒ visible to retrieval** (**C1 ⇒ ¬C3**, the static-task
+   paradox). The guardrail originally measured near-chance copying with the *wrong queries*.
+   Measured the way the protocol actually retrieves (held-out queries, disjoint vocabulary,
+   against the train store), nearest neighbors match on the rule attribute itself (polarity:
+   0.73–0.89) — because whatever generalizes across the split dominates cross-split
+   similarity, and that's exactly the attribute the rule depends on. The window rules need in
+   order to win closes as you open it. ([docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md)
+   formalizes this and the escape routes.)
 3. **The gate is calibrated, and silence was the correct output.** A synthetic ROC of the
    actual crystallization gate ([gate_roc.py](gate_roc.py)) measures a **0.00 false-positive
-   rate** at pure noise, detection at 1× the noise edge, and full-gate firing only past ~8× —
+   rate** at pure noise, detection at 1× the *noise edge* — the largest eigenvalue that noise
+   alone would produce, estimated by permutation —, and full-gate firing only past ~8× —
    the stability check (direction reproducible at |cos| > 0.95 across checks) is the binding
    constraint, and residual failure structure on the flip task never came close. The zero
    axioms weren't a malfunction; they're what a calibrated compressor does with no rank-1
@@ -156,26 +167,32 @@ no learnable signal it could act on — then rationalized surrender. (Full story
 
 ### Act three — Rule-Shift: breaking copying with time (ran; verdict: miss, with one loud exception)
 
-Static tasks being structurally unwinnable (C1 ⇒ ¬C3), the follow-up broke copying with
-*time*: the label rule flips at trial 100, stale exemplars keep retrieving perfectly and
-answering wrongly, and a re-crystallized rule stays current. Executor upgraded to a 12B
-that passes the RFμ qualification gemma3:4b failed (Oracle arms score 0.90–0.99 — the C5
-executor boundary is real and crossable). Pre-registered kill arm: recency-weighted RAG.
+Static tasks being structurally unwinnable, the follow-up broke copying with *time*: the
+label rule flips at trial 100, so stored examples keep retrieving perfectly and answering
+*wrongly*, while a re-crystallized rule stays current. The executor was upgraded to a 12B
+model that passes a cheap rule-following pre-test (**RFμ**) that gemma3:4b failed — with the
+rule in context it scores 0.90–0.99, so the executor boundary found on the flip task is real
+and crossable. The kill arm, registered in advance: RAG that weights recent
+examples more heavily — the obvious cheap fix a reviewer would reach for instead of rules.
 
-**Pilot seed**: the whole banner mechanism fired in sequence — surprise spiked 0.30 → 9.78
-NLL at the shift, the gate detected on exactly 3 consecutive checks, and the crystallizer
-wrote one legible prose rule (with a stale exception clause a human reviewer would
-strike — the auditability pitch, self-demonstrating). Held-out: **0.911 vs 0.522** for the
-kill arm (McNemar p = 1.6e-8), above even a copy policy with *perfect* staleness filtering
-(0.778). **Five-seed pre-registered verdict: miss** — pooled Δ vs the kill arm **+0.078
-against a +0.10 bar** (direction real, p = 0.002); the gate fired on **1 of 5 seeds**, and
-on every gate-shut seed Treatment's predictions are item-identical to plain RAG — no
-axiom, no effect, no hidden channel. The autopsy ([gate_roc_v2.py](gate_roc_v2.py)): a
-budget-calibrated evidence-accumulating gate fires no more often than the crude streak
-rule, because the shut seeds sit at noise-level contrast (λ/edge 0.81–0.85, noise
-averages 0.87) — **signal-starved, not threshold-starved**. Conditional on detection,
-compression beats copying by a wide, auditable margin; detection at real-world SNR is the
-bottleneck, and the bottleneck is the featurization, not the threshold. Full ledger:
+**Pilot seed**: the whole mechanism fired in sequence — surprise spiked at the shift (the
+model's error on the true label jumped 0.30 → 9.78), the trigger detected on exactly 3
+consecutive checks, and the crystallizer wrote one legible prose rule (including a stale
+exception clause a human reviewer would strike — the auditability pitch, self-demonstrating).
+Held-out: **0.911 vs 0.522** for the kill arm (p = 1.6e-8), beating even a copy policy given
+*perfect* knowledge of which examples were stale (0.778). **Five-seed verdict, scored against
+the bar set in advance: miss** — a **+0.078** gain over the kill arm **against the +0.10 bar**
+(the direction is real, p = 0.002, but it didn't clear the line). The trigger fired on **1 of
+5 seeds**, and on every seed where it stayed shut, Treatment's predictions are item-identical
+to plain RAG — no axiom, no effect, no hidden channel. The autopsy
+([gate_roc_v2.py](gate_roc_v2.py)): a more sensitive trigger design fires no more often than
+the crude one, because on the shut seeds the statistic it watches sits at the level you'd see
+from noise alone — **no signal in what the trigger measures, rather than a bar set too high**.
+(Whether signal exists at all in some *other* featurization is exactly what the ungated
+ablation below — written, not yet run — is meant to settle.) Conditional on
+detection, compression beats copying by a wide, auditable margin. Detecting that a rule has
+changed, at the signal levels a real workload offers, is the bottleneck — and the fix belongs
+in *what the trigger measures*, not in where the bar sits. Full ledger:
 [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §5–8.
 
 ---
@@ -191,7 +208,7 @@ ollama pull gemma3:4b
 ollama pull embeddinggemma
 
 # Only needed for the Rule-Shift experiment (act three): a ~8 GB executor that
-# clears the C5 boundary gemma3:4b fails. Skip if you're only running 1-3.
+# can actually apply a rule in context, which gemma3:4b can't. Skip for 1-3.
 ollama pull gemma4:12b
 
 # 2. Config
@@ -207,7 +224,7 @@ uv sync
 # 5. Run the experiments
 uv run python simulate.py                    # number-game (default)
 TASK=trec uv run python simulate.py          # TREC question classification
-uv run python guardrail_flip.py 42           # flip-task pre-run gates (probe AUC, copy ceiling m)
+uv run python guardrail_flip.py 42           # flip-task pre-run gates (rule visibility, copy ceiling)
 uv run python run_flip_experiment.py 42      # the 4-arm flip experiment (incl. Oracle)
 
 # Act three — Rule-Shift (needs gemma4:12b; ~1-2 h per seed)
@@ -226,14 +243,14 @@ DB/LLM ([tests/test_kernel_consolidation.py](tests/test_kernel_consolidation.py)
 
 ## What I'd do next
 
-The Rule-Shift experiment above consumed the old version of this list (RFμ, the
-sample-size-aware stability threshold, and the recency kill arm all ran as pre-registered).
+The Rule-Shift experiment above consumed the old version of this list (the executor pre-test,
+the sample-size-aware stability threshold, and the recency kill arm all ran as pre-registered).
 What its miss opens up, in order — full ledger in
 [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §7–8:
 
 - **The ungated-trigger ablation** — feed the gate-shut seeds' post-shift windows to a
-  crystallizer on a fixed schedule, no gate, and G4-score what it writes. This is the
-  arbiter: a correct rule means the signal was there and the *estimator* missed it; garbage
+  crystallizer on a fixed schedule, no gate, and score what it writes against the planted
+  rule. This is the arbiter: a correct rule means the signal was there and the *estimator* missed it; garbage
   means the calibration called it right. It also finally isolates the spectral gate as a
   variable — the one ablation this repo has owed since the flip experiment.
 - **Residual featurization** (conditional on the ablation saying "signal was there") — the
@@ -243,17 +260,17 @@ What its miss opens up, in order — full ledger in
   and time, which split): exemplar-copying inherits annotator noise one-for-one at
   retrieval; a crystallized rule is a pooled majority-policy estimator, noise-free at
   inference. Pre-registerable as a noise-rate sweep on the *static* task — reopening the
-  regime C1 ⇒ ¬C3 closed.
+  regime that the visible-to-embeddings ⇒ visible-to-retrieval result closed.
 
-Crystallization precision so far, scored against planted rules (G4): TREC 1/1, flip 1/2
+Crystallization precision so far, scored blind against the planted rules: TREC 1/1, flip 1/2
 (right axis, inverted mapping), Rule-Shift 1/1 legible-and-correct (with one stale clause a
 reviewer would veto — which is the auditability argument working).
 
 ## Going deeper
 
 - **[docs/BLOG_POST.md](docs/BLOG_POST.md)** — the full narrative: Titans lineage, the corrected
-  compressor, the flip showdown, and C5.
-- **[docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md)** — the C1 ⇒ ¬C3 theorem, the success
+  compressor, the flip showdown, and the executor gate.
+- **[docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md)** — the visible-to-embeddings result, the success
   ladder, and the pre-registered Rule-Shift design.
 - **[FINDINGS.md](FINDINGS.md)** — the number-game and TREC results, and the constant-surprise
   bug archaeology.
@@ -261,7 +278,8 @@ reviewer would veto — which is the auditability argument working).
   *retrieval residuals* with a detectability-gated trigger. Every claim is executable, and it
   retro-explains the old garbage axioms quantitatively.
 - **[docs/C1_C3_TASK.md](docs/C1_C3_TASK.md)** — the flip task: designed, guardrail-gated, and
-  run (first live run 2026-07-14; H1 not supported, C5 discovered).
+  run (first live run 2026-07-14; the hypothesis was not supported, and the executor gate
+  was discovered).
 - **[docs/USE_CASES.md](docs/USE_CASES.md)** — where eigen-memory *would* win: the winning
   conditions and a scorecard.
 - **[docs/PRIOR_ART.md](docs/PRIOR_ART.md)** — how this sits in the literature (Titans, RepE,
@@ -279,17 +297,17 @@ run_shift_experiment.py         # act three: the Rule-Shift experiment (incl. re
 
 # Pre-run gates and qualification (cheap, run before spending LLM budget)
 guardrail_flip.py               # flip-task gates measured under protocol conditions
-guardrail_shift.py              # Rule-Shift gates G1 + G2 — no LLM, no Postgres
-run_rfmu.py                     # RFmu: qualifies an executor against the C5 boundary
+guardrail_shift.py              # Rule-Shift pre-run gates — no LLM, no Postgres
+run_rfmu.py                     # cheap pre-test: can this model apply a rule at all?
 
 # Analysis of committed artifacts
-aggregate_flip.py               # multi-seed aggregation + C5 gate from guardrail artifacts
+aggregate_flip.py               # multi-seed aggregation + executor gate from guardrails
 derisk_pilot.py                 # complaint-driven pilot checks (no new LLM arms)
 run_trec_verify.py              # re-verifies the TREC one-true-axiom claim
 plot_results.py                 # learning curve, memory cost, eigen-spectrum
 
 # Gate calibration (synthetic ROC of the real crystallization gate)
-gate_roc.py                     # v1: streak-over-max-edge, the flip-era estimator
+gate_roc.py                     # v1 trigger: fire on a run of checks beating the noise edge
 gate_roc_mean.py                # the 2026-07-17 mean-contrast amendment
 gate_roc_v2.py                  # v2: evidence accumulation — the act-three autopsy
 ungated_ablation.py             # bypasses the gate entirely: was the signal there at all?
@@ -310,7 +328,7 @@ tests/
 results/static/                 # number-game + TREC runs
 results/flip/                   # label-flip: per-seed runs, guardrails, aggregate
 results/shift/                  # Rule-Shift: per-seed runs, guardrails, derisk
-results/calibration/            # gate ROC sweeps (v1/mean/v2) + RFmu qualification
+results/calibration/            # trigger sensitivity sweeps + executor pre-test results
 figures/                        # learning curve, memory cost, eigen-spectrum
 results_prefix_bug/             # the compromised first multi-seed run, kept as the record
 ```

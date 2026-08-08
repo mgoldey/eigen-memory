@@ -17,7 +17,8 @@ multi-seed experiment on **two different substrates**:
    does not beat plain RAG (75% vs 80%)**; the crystallized axioms add nothing over raw exemplars.
 
 A third experiment — a purpose-built label-flip task run later with the corrected kernel — is
-summarized in its own section below (spoiler: RAG won again, and the reason is a new gate, C5).
+summarized in its own section below (spoiler: RAG won again, and the reason is a new gate:
+the executor itself can't apply a rule well enough to beat copying — called C5 here).
 
 Across both substrates, **eigen-memory never beats plain RAG.** The two failures fail *differently*,
 and that's the finding: on the number-game the substrate hides the rule; on TREC the baseline is
@@ -148,7 +149,8 @@ Two things this shows, both more informative than the number-game null:
 
 1. **The rig is sound — RAG beats Baseline when the rule is visible.** Unlike the number-game
    (where RAG 0.46 ≈ Baseline 0.47), on TREC **RAG clearly beats no-memory** at nearly every batch
-   (final 0.80 vs 0.75; at batch 40, 0.95 vs 0.65). This directly confirms condition **C1** from
+   (final 0.80 vs 0.75; at batch 40, 0.95 vs 0.65). This directly confirms the *rule is visible
+   in embedding space* condition (**C1**) from
    [docs/USE_CASES.md](docs/USE_CASES.md): when the rule lives in embedding space, retrieving similar
    past episodes genuinely helps. The experimental apparatus *can* detect a memory benefit.
 
@@ -157,8 +159,9 @@ Two things this shows, both more informative than the number-game null:
    - **Ceiling effect.** Baseline is already 0.75 zero-shot — a 4B model can largely classify TREC
      question-types unaided. That leaves only ~25 points of headroom, and the seed variance (±0.15)
      is wide enough to swallow the RAG→Eigen gap.
-   - **Axioms are noisier than exemplars (C3 fails).** TREC is *single-exemplar-solvable*: one
-     retrieved "Where is X? → LOC" example already settles a question. An abstract self-written
+   - **Axioms are noisier than exemplars** — the *exemplars can't carry the task* condition
+     (**C3**) fails. TREC is *single-exemplar-solvable*: one retrieved "Where is X? → LOC"
+     example already settles a question. An abstract self-written
      rule is weaker context for a 4B model than a concrete neighbor, so crystallization adds cost
      without adding signal. The axiom-over-exemplar bet only pays off when one example is *not*
      enough — compositional rules, many-shot tasks — which TREC is not.
@@ -170,16 +173,17 @@ Two things this shows, both more informative than the number-game null:
 | Rule visible in embeddings (**C1**)? | ✗ | ✓ |
 | Does RAG beat Baseline? | No (0.46 vs 0.47) | **Yes (0.80 vs 0.75)** |
 | Does Eigen beat RAG? | No | No (0.75 vs 0.80) |
-| Why the effect can't show | substrate blind to rule | ceiling + single-exemplar-solvable (**C3** fails) |
+| Why the effect can't show | substrate blind to rule | ceiling + one exemplar already settles it (**C3** fails) |
 
 Eigen-memory beat plain RAG on **neither** substrate — but the two tasks fail different winning
-conditions (`USE_CASES.md` C1–C4), and neither satisfies all four. The TREC arm is the cleaner
+conditions (the four in `USE_CASES.md`; C1 and C3 are the ones at issue here), and neither
+satisfies all four. The TREC arm is the cleaner
 result: it rules out "the rig can't detect any memory effect" (RAG *does* win there), leaving the
 specific conclusion that **crystallizing failures into axioms doesn't beat retrieving raw exemplars
 unless a single exemplar is insufficient.** That is a precise, defensible negative — and it points
 exactly at where the idea *would* have to be tested to win (see next section).
 
-## The third act: the purpose-built flip task, C5, and bugs four and five (2026-07-14/16)
+## The third act: the purpose-built flip task, the executor gate (C5), and bugs four and five (2026-07-14/16)
 
 The task the next-steps list below calls for **was subsequently built and run** — a label-flip
 task engineered to sit in the one regime where rule-compression should win. The story arrived
@@ -196,20 +200,24 @@ prefix match). The compromised run is archived in `results_prefix_bug/`.
 **The corrected run (4 seeds, temperature 0, health counters in every artifact):** held-out
 Baseline 0.289 ± 0.048, Oracle 0.411 ± 0.103, RAG 0.600 ± 0.101, Eigen 0.617 ± 0.106 — but
 the Eigen–RAG "difference" is one seed's single wrong-mapping axiom; on the other three seeds
-**zero axioms crystallized and the arms produced identical predictions**. H1 not supported.
+**zero axioms crystallized and the arms produced identical predictions**. The hypothesis was not
+supported.
 Three replicated findings:
 
-1. **C5 (4/4 seeds):** the Oracle arm — true rule pasted in context — scores below the
+1. **The model can't apply the rule** (**C5**, 4/4 seeds): the Oracle arm — true rule pasted
+   in context — scores below the
    nearest-neighbor label-copy ceiling on every seed (paired −0.178 ± 0.093). A 4B executor
    applies a rule worse than blind copying scores; rule-memory could not win regardless of
    axiom quality.
-2. **C1 ⇒ ¬C3:** the guardrail originally measured copying with the wrong queries. Measured
+2. **Visible to the embeddings ⇒ visible to retrieval** (**C1 ⇒ ¬C3**): the guardrail originally
+   measured copying with the wrong queries. Measured
    under protocol conditions, cross-split neighbors match on the rule attribute itself
    (polarity 0.73–0.89) — making a rule embedding-visible makes it retrieval-visible, so the
    "eigen window" was a measurement artifact. See [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md).
 3. **The zero axioms are calibrated behavior:** a synthetic ROC of the actual gate
    (`gate_roc.py`) shows a 0.00 false-positive rate and full-gate firing only past ~8× the
-   noise edge (the stability check binds, not the detectability edge). The flip task's
+   *noise edge* — the largest eigenvalue noise alone would produce, estimated by permutation.
+   What binds is the check that the direction reproduces, not that edge. The flip task's
    residual failures are high-rank per-topic confusions — nothing rank-1 to find.
 
 Meanwhile the positive mechanism claim was re-verified on the final code: 120 TREC trials →
@@ -286,8 +294,10 @@ baseline — consistent with what I see here.
 
 ## What I'd do next
 
-The first item on the old version of this list — *build a task where C1 holds and C3 fails* —
-**was done**, and running it honestly proved such a static task cannot exist (C1 ⇒ ¬C3, above).
+The first item on the old version of this list — *build a task where the rule is
+embedding-visible (C1) but copying still fails (C3)* —
+**was done**, and running it honestly proved such a static task cannot exist (making the rule
+visible to the embeddings makes it visible to retrieval too — above).
 The unified roadmap now lives in [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md); the short
 version:
 
@@ -299,8 +309,9 @@ version:
   arm; the five-seed pre-registered endpoint missed — pooled Δ +0.078 vs a +0.10 bar, gate
   fired 1/5 seeds, shut seeds shown signal-starved by calibration. See README "Act three"
   and docs/NEXT_EXPERIMENT.md §6–8.)*
-- **RFμ, a 60-item executor microbenchmark** (rule vs copy vs conflicting contexts) to qualify
-  a model before burning a run — gemma3:4b already failed C5, so candidates start at 12B.
+- **A 60-item executor pre-test** (**RFμ**: rule vs copy vs conflicting contexts) to check a
+  model can apply a rule at all before burning a run — gemma3:4b already failed this, so
+  candidates start at 12B.
 - **A sample-size-aware stability threshold** — the gate-ROC shows the fixed 0.95 cosine
   demands ~8× the noise edge; principled earlier detection means scaling the threshold to the
   expected estimator wobble at the current n, not lowering the edge.

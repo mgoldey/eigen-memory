@@ -204,17 +204,18 @@ actually gating):
 Eigen "edges out" RAG by 0.017 — but read the instrument panel, not the scoreboard: on three
 of four seeds **zero axioms crystallized and the two arms produced literally identical
 predictions**; the entire difference is one seed whose single axiom named the right axis with
-an *inverted* mapping (+0.067, well inside noise). H1 not supported, and the seductive Act-one
-axiom story is gone — it was an artifact of the corrupted regime.
+an *inverted* mapping (+0.067, well inside noise). The hypothesis was not supported, and the
+seductive Act-one axiom story is gone — it was an artifact of the corrupted regime.
 
 Three findings survived the cleanup, and they're better than the story they replaced:
 
-- **C5, now replicated 4/4.** With the *true* rule in context, the executor scores below the
-  honest nearest-neighbor copy ceiling on every seed (paired Oracle − ceiling =
-  −0.178 ± 0.093). A 4B model applies a rule worse than it copies — so rule-memory could not
+- **The model applies the rule worse than it copies** (**C5**), now replicated 4/4. With the
+  *true* rule in context, the executor still scores below the honest nearest-neighbor copy
+  ceiling on every seed (paired Oracle − ceiling = −0.178 ± 0.093) — so rule-memory could not
   have won here **regardless of axiom quality**. That's the fifth pre-registerable gate:
   *the model must apply a rule better than it can copy an exemplar.*
-- **C1 ⇒ ¬C3: the static-task paradox.** The corrected guardrail (measuring retrieval the way
+- **Visible to the embeddings ⇒ visible to retrieval** (**C1 ⇒ ¬C3**), the static-task
+  paradox. The corrected guardrail (measuring retrieval the way
   the protocol actually retrieves — held-out queries, disjoint vocabulary) revealed the "eigen
   window" was a measurement artifact: cross-split neighbors match on *polarity* (0.73–0.89),
   not topic (0.38–0.47), because whatever attribute generalizes across the split dominates
@@ -230,7 +231,7 @@ Three findings survived the cleanup, and they're better than the story they repl
 ## What Titans gets for free, and what legibility costs
 
 Here is the deepest thing the failed showdown taught me, and it's a direct consequence of the
-substrate swap. **Titans never pays C5.** When surprise is compressed into weights, applying
+substrate swap. **Titans never pays this tax.** When surprise is compressed into weights, applying
 the memory is just the forward pass — rule-following is free, baked in. When surprise is
 compressed into *language*, application becomes a capability tax collected at inference: the
 model has to read the rule, bind it to the current input, and execute the conditional. A 4B
@@ -245,9 +246,9 @@ So the honest scope of "lossy compressive surprise-memory → rules" is now shar
   otherwise. That's the novel seam — Titans' surprise economics with a rate-gated, *legible*
   codec, where prior verbal-consolidation systems (Reflexion, Generative Agents, ExpeL)
   reflect on schedules and keep everything.
-- **The decompression side is the frontier, and static tasks can't reach it.** C5 says the
-  executor must apply a rule better than it copies (a 4B model doesn't, 4/4 seeds); the
-  C1 ⇒ ¬C3 paradox says that on a fixed-rule task, making the rule visible to the memory makes
+- **The decompression side is the frontier, and static tasks can't reach it.** The executor
+  gate says the model must apply a rule better than it copies (a 4B model doesn't, 4/4 seeds); the
+  visibility paradox says that on a fixed-rule task, making the rule visible to the memory makes
   it visible to retrieval too. The next experiment therefore breaks copying with *time*
   instead of geometry: a **Rule-Shift** design where the rule changes mid-run, stale exemplars
   keep retrieving perfectly and answering wrongly, and the re-crystallized rule stays current —
@@ -261,7 +262,7 @@ So the honest scope of "lossy compressive surprise-memory → rules" is now shar
 
 That experiment has now run its pilot, and it did the thing.
 
-The setup, briefly. First the executor tax got paid: a 60-item microbenchmark (RFμ) sweeping
+The setup, briefly. First the executor tax got paid: a 60-item pre-test (**RFμ**) sweeping
 candidate models found that gemma4:12b follows a pasted prose rule at 0.983 **even with five
 contradicting stale exemplars in context** (zero seduction — smaller models lost 10–23 points
 to the same trap), while a copy arm served stale exemplars realizes 0.450. That 0.53 gap,
@@ -285,7 +286,7 @@ False-positive rate at pure noise 0.00–0.05; fires at 1.00 from *half* the noi
 
 And then the pipeline earned its keep — twice, because the first pilot surfaced **bug six**:
 the crystallizer's token budget ran out inside its `<thought>` block and 1.4k characters of
-truncated chain-of-thought were stored and injected as the "axiom." The G4 gate (score every
+truncated chain-of-thought were stored and injected as the "axiom." The blind axiom audit (score every
 fired axiom against the planted rule *before* unblinding accuracy) caught it, in a project
 whose founding lesson is that this bug class recurs. The fixed crystallizer — retry for a bare
 `RULE:` line, never store scaffolding — produced a genuinely legible rule and scored *higher*:
@@ -319,7 +320,7 @@ post-shift episodes, stronger than any realizable recency weighting — ceilings
 well below 0.911. No exemplar policy over this buffer reaches the treatment number.
 
 The honest scope: this is **one seed and one crystallization event**, on a task built to be
-winnable (rank-1, embedding-visible — the C1 ⇒ ¬C3 lesson applied in reverse). The
+winnable (rank-1, embedding-visible — the visibility lesson applied in reverse). The
 crystallized rule is extensional — it enumerates markers rather than naming the
 request-vs-report concept — and the ablation that would isolate the spectral gate's value
 over a dumb "summarize recent failures every N batches" trigger hasn't run. The five-seed
@@ -408,7 +409,7 @@ to liability* — is not exotic:
 What the model deliberately simplifies, so the transfer claim stays honest: real shifts are
 gradual and overlapping rather than a clean flip at trial 100; real feedback is delayed,
 noisy, and partial rather than instant gold labels; and real failure axes are not guaranteed
-to be embedding-visible — C1 was engineered true here, and the C1 ⇒ ¬C3 result is proof that
+to be embedding-visible — that was engineered true here, and the visibility result is proof that
 some failure structures can't be caught this way at all.
 
 ## The third wedge: annotator disagreement (a hypothesis, not a result)
@@ -427,7 +428,8 @@ inference is noise-free from then on. The rule doesn't care that 15% of the buff
 mislabeled. Disagreement therefore drives a wedge between the copy ceiling and the rule
 ceiling that *grows with the disagreement rate*.
 
-The reason this deserves its own section: the wedge works on **static** tasks. C1 ⇒ ¬C3
+The reason this deserves its own section: the wedge works on **static** tasks. The visibility
+paradox
 closed the static regime because a retrieved neighbor always carries the right label — but a
 noisy neighbor doesn't, and label noise degrades copying without touching the embedding
 geometry the detector uses. So the project now has three candidate wedges between rules and
