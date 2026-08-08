@@ -5,26 +5,34 @@ compresses it into neural weights — but Titans is an architecture you pretrain
 This project rebuilds those economics as a pure inference-time wrapper around a frozen model:
 surprising failures get compressed into short, legible English rules instead of weights.
 
-Four controlled experiments ask where that beats plain retrieval.
+**How it works, in three sentences.** The agent answers a stream of classification items and
+scores its own *surprise* on each one — how wrong and how unsure it was, read off the model's
+logits. Surprising failures get stored; when enough of them line up along a single direction
+in embedding space, a **trigger** fires and the agent writes itself one short English rule
+(an **axiom**) summarizing that whole cluster of failures, which is then injected into later
+prompts. The comparison throughout is against plain **RAG** — retrieving the most similar past
+examples — because that is what you would actually build instead.
 
-**It never does — and the instrumented reasons why are the deliverable.**
+Four controlled experiments ask where the rules beat the retrieval.
+
+**They never do — and the instrumented reasons why are the deliverable.**
 
 | # | Experiment | Verdict | Why |
 |---|------------|---------|-----|
-| 1 | **Number-game** — classify integers by a hidden arithmetic rule | tie | Substrate is blind to the rule: text embeddings can't see primality, so *no* memory can work. |
-| 2 | **TREC** — question-type classification | RAG wins (0.80 vs 0.75) | The rig detects real memory benefits — but one retrieved exemplar settles each question, so rules have nothing to add. |
-| 3 | **Label-flip** — purpose-built, 4 seeds, held-out | exact tie | The crystallization trigger ("the gate") never fired; eigen-memory degenerated to *exactly* RAG's predictions. Two structural reasons, both below. |
-| 4 | **Rule-Shift** — the rule flips mid-run, 12B executor, 5 seeds | **miss** — Δ+0.078 vs a +0.10 pre-registered bar | Gate fired on 1 of 5 seeds. But *conditional on detection*, the crystallized rule beat copying **0.911 vs 0.522**. |
+| 1 | **Number-game** — classify integers by a hidden arithmetic rule | tie | The embeddings can't see the rule: text embeddings don't encode primality, so *no* memory can work. |
+| 2 | **TREC** — question-type classification | RAG wins (0.80 vs 0.75) | The rig detects real memory benefits — but one retrieved example settles each question, so rules have nothing to add. |
+| 3 | **Label-flip** — purpose-built, 4 seeds, held-out | exact tie | The trigger never fired, so the agent wrote no rules and its predictions were *identical* to RAG's. Two structural reasons, both below. |
+| 4 | **Rule-Shift** — the rule flips mid-run, 12B model, 5 seeds | **miss** — +0.078 against a +0.10 bar set in advance | The trigger fired on only 1 of 5 seeds. But on that seed, the rule the agent wrote beat copying **0.911 vs 0.522**. |
 
-Experiment 1 is a substrate failure and 2 is a task failure — neither says anything about
-rule-compression itself. Experiments **3 and 4 are the real results**:
+The first two experiments fail for reasons that have nothing to do with rule-compression: one
+picked a rule the embeddings can't represent, the other a task a single example already solves.
+Experiments **3 and 4 were built to remove those excuses, and they are the real results**:
 
 - **Flip (3)** produced two replicated discoveries, both about *why* a rule couldn't win:
   - **The model applies the rule worse than it copies.** Paste the *true* rule into the 4B
     model's context and it scores 0.411 — worse than the 0.58–0.60 you get by blindly copying
-    the nearest stored
-    example's label, on **every** seed. If the executor applies a correct rule worse than it
-    copies, no amount of axiom quality can help. (Called **C5** in the docs.)
+    the nearest stored example's label, on **every** seed. If a model applies a correct rule
+    worse than it copies, no amount of rule quality can help. (Called **C5** in the docs.)
   - **You can't have it both ways.** For rules to beat copying, the rule must be visible to the
     embeddings (so the agent can find the pattern) but copying must *fail* (so there's something
     to win). Measuring retrieval the way the protocol actually retrieves showed these can't
@@ -41,9 +49,8 @@ Along the way: **four** bugs that silently corrupted the signal (three made "sur
 constant; the fourth injected the model's raw chain-of-thought into the arm under test — each
 caught by reading raw values and stored artifacts, not accuracy curves); a theory review that
 disproved the project's own original mechanism and replaced it with one where **every claim is
-an executable test** ([tests/test_kernel_theory.py](tests/test_kernel_theory.py)); a
-**measured ROC for the crystallization gate** (false-positive rate 0.00; what binds is the
-check that the detected direction reproduces, not the noise threshold); and a one-line
+an executable test** ([tests/test_kernel_theory.py](tests/test_kernel_theory.py)); a measured
+sensitivity curve for the trigger, showing it never fires on pure noise; and a one-line
 conclusion — *compress into weights when your model is small; compress into sentences when
 your model can read.*
 
@@ -53,6 +60,8 @@ No API keys, no cloud. Full narrative: **[docs/BLOG_POST.md](docs/BLOG_POST.md)*
 ---
 
 ## The idea: lossy compression of surprise — into rules, not weights
+
+The three-sentence version is above; this is the mechanism.
 
 Titans' principle: memory should be *lossy, and surprise should decide what survives*. It
 compresses surprising experience into the weights of a small MLP at test time — opaque,
