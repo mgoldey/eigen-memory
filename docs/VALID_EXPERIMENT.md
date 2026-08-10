@@ -15,6 +15,11 @@ run — included to show that the negative result is understood, not hand-waved.
 The mechanism (surprise-gated writes, PCA over failures, axiom crystallization) is unchanged.
 Only the *task and protocol* change.
 
+> **Superseded on this point (see [THEORY.md](THEORY.md) §1–3).** The mechanism did *not* stay
+> unchanged: a later theory review disproved the "PCA over failure embeddings" story and
+> replaced it with contrastive PCA over retrieval *residuals* under a detectability gate. The
+> task/protocol design below still stands; the mechanism sentence above does not.
+
 ## Design principle
 
 Eigen-memory can only beat RAG when **a compressed general rule outperforms a bag of specific

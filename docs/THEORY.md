@@ -218,7 +218,9 @@ Two measured warnings for anyone designing for the window:
 
 The agent loop keeps its shape; the kernel and probe change. Items 1–7 below are now
 implemented in `src/eigen_memory_agent/` (unit tests: `tests/test_kernel_consolidation.py`);
-item 8 is the C1∧C3 protocol, still to be built:
+item 8 is the C1∧C3 protocol, which has since been built and run — it became the label-flip
+experiment ([C1_C3_TASK.md](C1_C3_TASK.md)), and running it honestly showed the C1∧C3 regime
+cannot exist on a static task:
 
 1. **Log the pairing**: store each episode's retrieved-neighbor ids and the correct/incorrect
    outcome (schema: two columns).

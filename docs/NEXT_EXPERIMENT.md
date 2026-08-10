@@ -210,14 +210,34 @@ Control_RAG 0.556 · Recency_RAG 0.522 · **Treatment_Eigen 0.911** (requests 1.
 Oracle): 0.056 — just misses. G3 fired exactly as pre-registered (a marginal pre-shift
 detection was rejected by the streak rule when λ dipped back under the edge; then three
 consecutive post-shift detections, stable direction, one crystallization; surprise spiked
-0.30 → 9.78 NLL at the shift boundary). Artifacts: results/shift/comparison_results.shift.42.json,
+0.30 → 9.78 NLL at the shift boundary — this pair is read from the run log, which is
+gitignored, so it is reported as live-run telemetry rather than a committed number).
+Artifacts: results/shift/comparison_results.shift.42.json,
 results/shift/derisk.shift.42.json, results/calibration/gate_roc_mean.json, results/shift/guardrail.shift.<seed>.json ×5.
 
 **G4 caught a real mechanism bug on the first attempt** (archived:
 results/shift/comparison_results.shift.42.cotbug.json): the crystallizer's 400-token budget ran out
 inside its <thought> block and 1.4k chars of truncated CoT were stored and injected —
 scoring 0.856, causally effective but not the claimed mechanism. Fix: retry for a bare
-RULE line, never store scaffolding. The rerun crystallized a genuinely legible prose rule
+RULE line, never store scaffolding.
+
+> **Correction (2026-08-10, found in a later audit).** That fix was incomplete, and the
+> 0.911 artifact below is affected. The retry only covered replies with **no** `RULE:` at
+> all; the extraction itself used `rpartition("RULE:")[2]`, which keeps the entire *suffix*
+> rather than the rule's line. The stored seed-42 axiom is therefore the legible rule
+> **followed by ~250 chars of trailing CoT**, truncated mid-sentence — visible in
+> `results/shift/comparison_results.shift.42.json`. So the 0.911 run still injected CoT
+> residue, in smaller quantity than the 0.856 cotbug run (~250 vs ~1.4k chars) and with the
+> correct rule stated first, but the "clean prose rule only" claim did not hold. The
+> extraction now takes the first line after `RULE:`, with a regression test built from this
+> artifact's exact reply shape
+> (`tests/test_kernel_consolidation.py::test_only_the_rule_line_is_stored_when_cot_trails_it`).
+> **The 0.911 number stands as measured but is not a clean test of the stated mechanism; a
+> rerun on the fixed extractor is required before it can be cited as one.** The pre-registered
+> five-seed verdict (miss, +0.078) is unaffected in direction — seed 42 was the only firing
+> seed, so a rerun moves the one number the pooled result leans on.
+
+The rerun crystallized a genuinely legible prose rule
 — "resolved / already through review → ESCALATE; pending / awaiting review → DEFER (unless
 'still awaiting review', which is FILE)" — and scored **higher** (0.911). G4 scoring: both
 polarity clusters map to the correct post-shift labels, expressed extensionally (marker
@@ -333,9 +353,15 @@ pre-registered +0.10 bar. Endpoint NOT met**, despite the direction being real (
 89-vs-54 discordant, one-sided p = 2.2e-3) and Eigen > Control_RAG (0.658 vs 0.589)
 holding. Verdict: **miss**; the +0.10 effect-size bar does the work the p-value can't.
 
-Mechanistic accounting is exact: on every gate-shut seed, Treatment's 90 held-out
-predictions are IDENTICAL to Control_RAG's (verified item-level) — no axiom, no effect,
-no hidden channel. The entire pooled gain is seed 42's fire (+0.355 over its own control).
+Mechanistic accounting, stated precisely: on **3 of the 4** gate-shut seeds (2, 18, 7),
+Treatment's 90 held-out predictions are IDENTICAL to Control_RAG's, verified item-level —
+no axiom, no effect, no hidden channel. Seed 23 is the exception and is worth recording
+honestly: with **zero** axioms stored and temperature 0, it still differs on exactly 1 of 90
+items (0.600 vs 0.611). No memory channel can explain a difference with no axiom in the
+store, so this is residual nondeterminism in the serving stack — but it means the claim is
+"3 of 4 identical", not "all four", and any future run should expect ~1-item jitter rather
+than treating bitwise identity as a guaranteed invariant.
+The entire pooled gain is seed 42's fire (+0.355 over its own control).
 So the result decomposes cleanly:
 - **Conditional on firing, the mechanism wins big and legibly** (one seed: +0.389 over
   the kill arm, McNemar 1.6e-8, auditable prose rule).

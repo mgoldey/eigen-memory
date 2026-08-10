@@ -133,7 +133,9 @@ First outing of the rebuilt kernel, on the two old tasks, with a falsifiable pre
 - **TREC, 120 trials** (question-type rule, embedding-visible): a real axis should clear the
   edge. It did — exactly one axiom. Re-verified end-to-end on the final, fully-debugged code
   (`run_trec_verify.py`, archived in `results/static/trec_verify.42.json`): one axiom, strength 1.13, zero
-  missing-token probes, and the rule is true:
+  missing-token probes — though a **9.2% parse-fallback rate** on this run, well above the ~1%
+  the flip runs show, so a tenth of the labels came from the fallback parser rather than a
+  clean parse — and the rule is true:
 
 > *"Questions requiring numerical answers should be labeled NUM, and questions requiring
 > location or descriptive answers should be labeled LOC."*
@@ -282,9 +284,12 @@ structure (post-shift failures concentrate on one polarity, successes on the oth
 *location* difference, which covariance contrasts cancel). The amended detector — a
 two-sample mean contrast under the identical permutation-edge/stability/novelty gates — got
 the same treatment as the original: a synthetic ROC at the pilot's exact configuration.
-False-positive rate at pure noise 0.00–0.05; fires at 1.00 from *half* the noise edge upward.
+False-positive rate at pure noise 0.00–0.05; at n ≥ 30 failures it fires at 1.00 from *half*
+the noise edge upward, though at n = 25 it tops out at 0.80–0.90 and is non-monotonic — the
+sample-size floor is real (`results/calibration/gate_roc_mean.json`).
 
-And then the pipeline earned its keep — twice, because the first pilot surfaced **bug six**:
+And then the pipeline earned its keep — twice, because the first pilot surfaced **the fourth
+bug in the corrupted-signal class**:
 the crystallizer's token budget ran out inside its `<thought>` block and 1.4k characters of
 truncated chain-of-thought were stored and injected as the "axiom." The blind axiom audit (score every
 fired axiom against the planted rule *before* unblinding accuracy) caught it, in a project
@@ -300,7 +305,8 @@ whose founding lesson is that this bug class recurs. The fixed crystallizer — 
 | Oracle (true post-shift rule pasted) | 0.967 |
 
 The detector stayed silent through 100 pre-shift trials (one marginal flicker, correctly
-rejected by the streak rule), watched batch surprise spike 0.30 → 9.78 NLL at the shift, fired
+rejected by the streak rule), watched batch surprise spike 0.30 → 9.78 NLL at the shift (a
+run-log reading; the committed artifact stores the gate telemetry, not the surprise trace), fired
 on three consecutive checks, and crystallized exactly one axiom:
 
 > *"If the status is 'resolved' or 'already through review', label as ESCALATE; if the status
@@ -338,10 +344,12 @@ it did its job. Verdict: miss.
 
 The decomposition is unusually clean, because the architecture leaves no partial credit.
 The gate fired on **one seed in five**. On that seed, treatment beat the kill arm by +0.389
-with an auditable prose rule. On the four gate-shut seeds, zero axioms crystallized — and
-treatment's predictions were *item-for-item identical* to plain RAG's (verified, all 90 per
-seed). No axiom, no effect, no hidden channel. Everything the mechanism earned, it earned
-on the seed where it fired.
+with an auditable prose rule. On the four gate-shut seeds, zero axioms crystallized — and on
+three of them treatment's predictions were *item-for-item identical* to plain RAG's, all 90
+verified. (The fourth, seed 23, differs on a single item with no axiom in the store at
+temperature 0 — serving-stack jitter, not a memory effect, but "three of four" is the claim
+the artifacts support.) No axiom, no effect, no hidden channel. Everything the mechanism
+earned, it earned on the seed where it fired.
 
 Why didn't it fire? The telemetry says the gate wasn't refusing noise — it was refusing
 *evidence*. Across the shut seeds, the failure-contrast direction reproduced check after

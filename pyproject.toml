@@ -1,7 +1,7 @@
 [project]
 name = "eigen-memory-agent"
 version = "0.1.0"
-description = "Evaluating a lossy eigen-memory agent with Gemma 3 4b"
+description = "Evaluating a lossy eigen-memory agent that compresses failures into English rules (Gemma 3 4b / Gemma 4 12b, local)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

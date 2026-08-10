@@ -352,7 +352,13 @@ class EigenMemoryKernel:
         # the introspection call; storing the full reply used to inject ~1.2k
         # chars of CoT rambling into every context the axiom was selected for —
         # sabotaging the very arm under test.
-        rule = raw.rpartition("RULE:")[2].strip()
+        #
+        # Take the first LINE after the last "RULE:", not the whole suffix.
+        # rpartition(...)[2] kept everything downstream, so a reply that stated
+        # the rule and then kept reasoning ("Wait, let me refine that...") stored
+        # the rule PLUS ~250 chars of trailing CoT — the truncation cousin of the
+        # original bug, and what the seed-42 Rule-Shift pilot actually stored.
+        rule = raw.rpartition("RULE:")[2].strip().splitlines()[0].strip() if "RULE:" in raw else ""
         if not rule or "<thought" in rule:
             # Never store scaffolding as memory. The axis stays unconsumed, so
             # crystallization retries at the next check.

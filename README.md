@@ -21,7 +21,7 @@ Four controlled experiments ask where the rules beat the retrieval.
 |---|------------|---------|-----|
 | 1 | **Number-game** — classify integers by a hidden arithmetic rule | tie | The embeddings can't see the rule: text embeddings don't encode primality, so *no* memory can work. |
 | 2 | **TREC** — question-type classification | RAG wins (0.80 vs 0.75) | The rig detects real memory benefits — but one retrieved example settles each question, so rules have nothing to add. |
-| 3 | **Label-flip** — purpose-built, 4 seeds, held-out | exact tie | The trigger never fired, so the agent wrote no rules and its predictions were *identical* to RAG's. Two structural reasons, both below. |
+| 3 | **Label-flip** — purpose-built, 4 seeds, held-out | tie (0.617 vs 0.600) | The trigger stayed shut on 3 of 4 seeds, where predictions were *item-identical* to RAG's; the whole gap is one seed's single wrong-mapping axiom. Two structural reasons, both below. |
 | 4 | **Rule-Shift** — the rule flips mid-run, 12B model, 5 seeds | **miss** — +0.078 against a +0.10 bar set in advance | The trigger fired on only 1 of 5 seeds. But on that seed, the rule the agent wrote beat copying **0.911 vs 0.522**. |
 
 The first two experiments fail for reasons that have nothing to do with rule-compression: one
@@ -45,12 +45,15 @@ Experiments **3 and 4 were built to remove those excuses, and they are the real 
   the trigger measures, not in where the bar sits.
   ([Details below](#act-three--rule-shift-breaking-copying-with-time-ran-verdict-miss-with-one-loud-exception).)
 
-Along the way: **four** bugs that silently corrupted the signal (three made "surprise" a
-constant; the fourth injected the model's raw chain-of-thought into the arm under test — each
-caught by reading raw values and stored artifacts, not accuracy curves); a theory review that
+Along the way: **five** bugs that silently corrupted the signal (two made "surprise" a
+constant, one flattened it for 2 of 3 classes, and two injected the model's raw
+chain-of-thought into the arm under test — the last found in an audit *after* the headline
+run, and disclosed in place rather than quietly re-run; each caught by reading raw values and
+stored artifacts, not accuracy curves); a theory review that
 disproved the project's own original mechanism and replaced it with one where **every claim is
 an executable test** ([tests/test_kernel_theory.py](tests/test_kernel_theory.py)); a measured
-sensitivity curve for the trigger, showing it never fires on pure noise; and a one-line
+sensitivity curve for the trigger (the original gate never fires on pure noise; the later
+amended estimators fire on 5–10% of noise draws at the smaller sample sizes); and a one-line
 conclusion — *compress into weights when your model is small; compress into sentences when
 your model can read.*
 
@@ -135,8 +138,8 @@ sit in the one regime where rule-compression should win (rule embedding-visible,
    formalizes this and the escape routes.)
 3. **The gate is calibrated, and silence was the correct output.** A synthetic ROC of the
    actual crystallization gate ([gate_roc.py](gate_roc.py)) measures a **0.00 false-positive
-   rate** at pure noise, detection at 1× the *noise edge* — the largest eigenvalue that noise
-   alone would produce, estimated by permutation —, and full-gate firing only past ~8× —
+   rate** at pure noise, detection at 1× the *noise edge* (the largest eigenvalue that noise
+   alone would produce, estimated by permutation), and full-gate firing only past ~8×. So
    the stability check (direction reproducible at |cos| > 0.95 across checks) is the binding
    constraint, and residual failure structure on the flip task never came close. The zero
    axioms weren't a malfunction; they're what a calibrated compressor does with no rank-1
@@ -153,6 +156,10 @@ noise; the *decompression* side — a model that can actually read and apply a r
 frontier, and a 4B model isn't it. This repo measures that boundary instead of claiming a win.
 
 ![Learning curve](figures/learning_curve.png)
+
+*Learning curve from the **number-game** run (experiment 1, old kernel, 2 seeds) — the arms'
+error bands overlap almost completely. Rendered from `results/static/comparison_results.json`;
+the flip and Rule-Shift experiments report held-out accuracy rather than curves.*
 
 **The most revealing early artifact** — before the theory correction, the old kernel crystallized
 this axiom on the number-game:
@@ -185,15 +192,24 @@ and crossable. The kill arm, registered in advance: RAG that weights recent
 examples more heavily — the obvious cheap fix a reviewer would reach for instead of rules.
 
 **Pilot seed**: the whole mechanism fired in sequence — surprise spiked at the shift (the
-model's error on the true label jumped 0.30 → 9.78), the trigger detected on exactly 3
+model's error on the true label jumped 0.30 → 9.78 — from the run log, not a committed
+artifact), the trigger detected on exactly 3
 consecutive checks, and the crystallizer wrote one legible prose rule (including a stale
 exception clause a human reviewer would strike — the auditability pitch, self-demonstrating).
 Held-out: **0.911 vs 0.522** for the kill arm (p = 1.6e-8), beating even a copy policy given
-*perfect* knowledge of which examples were stale (0.778). **Five-seed verdict, scored against
+*perfect* knowledge of which examples were stale (0.778). **Caveat, found in a later audit
+and worth stating up front:** the extractor that stored that rule kept ~250 chars of trailing
+chain-of-thought after it, so this run injected CoT residue alongside the rule and is *not* a
+clean test of the stated mechanism. Fixed and regression-tested since; the number stands as
+measured but needs a rerun before it can be cited as clean. Details and the audit trail:
+[docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §6. **Five-seed verdict, scored against
 the bar set in advance: miss** — a **+0.078** gain over the kill arm **against the +0.10 bar**
 (the direction is real, p = 0.002, but it didn't clear the line). The trigger fired on **1 of
-5 seeds**, and on every seed where it stayed shut, Treatment's predictions are item-identical
-to plain RAG — no axiom, no effect, no hidden channel. The autopsy
+5 seeds**, and on 3 of the 4 seeds where it stayed shut, Treatment's predictions are
+item-identical to plain RAG — no axiom, no effect, no hidden channel. (The fourth, seed 23,
+differs on exactly 1 of 90 held-out items with zero axioms stored at temperature 0 — a
+residual nondeterminism in the serving stack, not a memory effect, but the honest statement
+is 3 of 4 rather than all four.) The autopsy
 ([gate_roc_v2.py](gate_roc_v2.py)): a more sensitive trigger design fires no more often than
 the crude one, because on the shut seeds the statistic it watches sits at the level you'd see
 from noise alone — **no signal in what the trigger measures, rather than a bar set too high**.
@@ -271,9 +287,12 @@ What its miss opens up, in order — full ledger in
   inference. Pre-registerable as a noise-rate sweep on the *static* task — reopening the
   regime that the visible-to-embeddings ⇒ visible-to-retrieval result closed.
 
-Crystallization precision so far, scored blind against the planted rules: TREC 1/1, flip 1/2
-(right axis, inverted mapping), Rule-Shift 1/1 legible-and-correct (with one stale clause a
-reviewer would veto — which is the auditability argument working).
+Crystallization precision so far, scored blind against the planted rules — three axioms have
+ever fired across all experiments, so this is a count, not a rate: **TREC** 1 axiom, correct.
+**Flip** 1 axiom, half credit (it found the right axis but inverted the mapping). **Rule-Shift**
+1 axiom, legible and correct, with one stale clause a reviewer would veto — which is the
+auditability argument working, and, per the audit note above, ~250 chars of trailing
+chain-of-thought a reviewer would also strike.
 
 ## Going deeper
 

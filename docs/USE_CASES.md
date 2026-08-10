@@ -1,8 +1,13 @@
 # Where Eigen-Memory Would Actually Win
 
-The experiment in this repo is a negative result: on the number-classification task,
-compressing failures into "axioms" did not beat plain retrieval (see
-[../FINDINGS.md](../FINDINGS.md)). This document is the constructive flip side — *given why it
+> **Status note.** Written after the number-game result, before the flip and Rule-Shift
+> experiments. Its four winning conditions still frame the analysis, but the repo now reports
+> four experiments and a fifth condition (the executor must be able to *apply* a rule — C5).
+> Current summary: [../README.md](../README.md).
+
+The experiment this document was written against is a negative result: on the
+number-classification task, compressing failures into "axioms" did not beat plain retrieval
+(see [../FINDINGS.md](../FINDINGS.md)). This document is the constructive flip side — *given why it
 lost, where would it win?* The answer follows directly from the failure analysis.
 
 ## The principle

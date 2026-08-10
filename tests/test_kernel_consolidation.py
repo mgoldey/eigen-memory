@@ -175,6 +175,39 @@ def test_crystallizes_planted_axis_with_aligned_direction(rig):
     assert "succ" in prompt, "matched successes must be included"
 
 
+def test_only_the_rule_line_is_stored_when_cot_trails_it(rig):
+    """Trailing chain-of-thought after the RULE: line must not be stored.
+
+    Regression for the fourth constant/CoT bug class. The guard used to be
+    `raw.rpartition("RULE:")[2]`, which keeps the whole *suffix* — so a reply
+    that puts the rule first and then keeps rambling stored ~250 chars of CoT
+    and injected it into every context the axiom was selected for. This is the
+    exact shape the seed-42 Rule-Shift pilot produced
+    (results/shift/comparison_results.shift.42.json); the pre-existing test
+    missed it because its fake reply ended at the rule.
+    """
+    k, conn, llm = rig["kernel"], rig["conn"], rig["llm"]
+    llm.reply = (
+        "<thought>weighing the two sides</thought>\n"
+        "RULE: requests and reports route oppositely.\n\n"
+        "Wait, let me refine that based on the core distinction between A and B.\n"
+        "Side A: Resolved/Awaiting = High urgency; Side B: Pending = Deferred.\n"
+        "Side A (Resolved/Awaiting) -> ESCALATE or"
+    )
+
+    _feed(k, rig["rng"], rig["v_B"], n_fail=30, n_succ=15)
+    k.check_and_crystallize()
+    _feed(k, rig["rng"], rig["v_B"], n_fail=10, n_succ=5, tag="-b2")
+    k.check_and_crystallize()
+
+    inserts = _axiom_inserts(conn)
+    assert len(inserts) == 1, "exactly one axiom must crystallize"
+    axiom = inserts[0][1][0]
+    assert axiom == "RULE: requests and reports route oppositely.", axiom
+    for leak in ("Wait, let me refine", "Side A", "<thought>", "->"):
+        assert leak not in axiom, f"CoT scaffolding leaked into the axiom: {leak!r}"
+
+
 def test_same_axis_not_crystallized_twice(rig):
     k, conn = rig["kernel"], rig["conn"]
     for tag in ("-1", "-2", "-3", "-4"):

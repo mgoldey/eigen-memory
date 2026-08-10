@@ -1,7 +1,9 @@
 # Findings
 
-> Honest write-up of what the experiment actually showed. Results are the mean of
-> **2 seeds** (42, 7), 100 trials each, on a local `gemma3:4b` model.
+> Honest write-up of what the experiments actually showed. The number-game and TREC sections
+> are the mean of **2 seeds** (42, 7), 100 trials each, on a local `gemma3:4b` model; the
+> later flip section below is 4 seeds, and the Rule-Shift work (5 seeds, `gemma4:12b`) lives
+> in [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md).
 
 ## TL;DR
 
@@ -46,7 +48,7 @@ and, as the next section argues, even a clean win here would be uninterpretable.
 ## What I had to fix before the experiment was even valid
 
 The most important part of this project is *not* the architecture — it's that the original
-experiment was measuring nothing. Three separate bugs each made the "surprise" signal a
+experiment was measuring nothing. Two separate bugs each made the "surprise" signal a
 **constant**, so memory was being gated on noise:
 
 1. **Flat 2.0** — an `UnboundLocalError` when the true-label token was missing from the
@@ -55,8 +57,16 @@ experiment was measuring nothing. Three separate bugs each made the "surprise" s
 2. **Flat 7.0** — after fixing (1), a completion-style probe prompt (`"...the label:"`) was
    fed to a *chat* model, which replies with prose. The label was never the first token, so
    surprise collapsed to the missing-token fallback (`7.0`) for every item.
-3. Fixed by constraining the probe to emit exactly one label word, so its logprob is a real,
-   varied prediction-error signal (`1.55, 4.62, 5.45, ...`).
+
+Fixed by constraining the probe to emit exactly one label word, so its logprob is a real,
+varied prediction-error signal (`1.55, 4.62, 5.45, ...`).
+
+**Running count of the constant/corrupted-signal bug class, used consistently across these
+docs:** (1) flat 2.0 and (2) flat 7.0 here; (3) the prefix-match bug that flattened NLL for
+2 of 3 classes, and (4) the chain-of-thought-as-axiom bug — both found in the flip-era review
+and archived in [`results_prefix_bug/`](results_prefix_bug/). A fifth, the incomplete fix to
+(4) that left trailing CoT in the stored axiom, was found in a 2026-08-10 audit — see
+[docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §6.
 
 **Lesson:** a sophisticated-looking pipeline can produce authoritative numbers while
 measuring a constant. The only way I caught it was instrumenting and *looking at the actual
@@ -183,7 +193,7 @@ specific conclusion that **crystallizing failures into axioms doesn't beat retri
 unless a single exemplar is insufficient.** That is a precise, defensible negative — and it points
 exactly at where the idea *would* have to be tested to win (see next section).
 
-## The third act: the purpose-built flip task, the executor gate (C5), and bugs four and five (2026-07-14/16)
+## The third act: the purpose-built flip task, the executor gate (C5), and bugs three and four (2026-07-14/16)
 
 The task the next-steps list below calls for **was subsequently built and run** — a label-flip
 task engineered to sit in the one regime where rule-compression should win. The story arrived
