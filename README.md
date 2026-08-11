@@ -214,8 +214,12 @@ is 3 of 4 rather than all four.) The autopsy
 ([gate_roc_v2.py](gate_roc_v2.py)): a more sensitive trigger design fires no more often than
 the crude one, because on the shut seeds the statistic it watches sits at the level you'd see
 from noise alone — **no signal in what the trigger measures, rather than a bar set too high**.
-(Whether signal exists at all in some *other* featurization is exactly what the ungated
-ablation below — written, not yet run — is meant to settle.) Conditional on
+Whether signal existed at all was settled by the ungated ablation (run 2026-08-11): forced to
+crystallize from those same windows, all four shut seeds wrote rules that map both polarities
+to the correct post-shift labels. **The signal was there; the live estimator did not surface
+it.** One caveat keeps that from being a clean indictment of the gate — the ablation rebuilds
+which trials failed using a proxy that is cleaner than live reality, so some of the gap is a
+better failure signal rather than better featurization. Conditional on
 detection, compression beats copying by a wide, auditable margin. Detecting that a rule has
 changed, at the signal levels a real workload offers, is the bottleneck — and the fix belongs
 in *what the trigger measures*, not in where the bar sits. Full ledger:
@@ -277,14 +281,17 @@ the sample-size-aware stability threshold, and the recency kill arm all ran as p
 What its miss opens up, in order — full ledger in
 [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §7–8:
 
-- **The ungated-trigger ablation** — feed the gate-shut seeds' post-shift windows to a
-  crystallizer on a fixed schedule, no gate, and score what it writes against the planted
-  rule. This is the arbiter: a correct rule means the signal was there and the *estimator* missed it; garbage
-  means the calibration called it right. It also finally isolates the spectral gate as a
-  variable — the one ablation this repo has owed since the flip experiment.
-- **Residual featurization** (conditional on the ablation saying "signal was there") — the
-  estimator currently contrasts raw embedding means; the shut seeds show that stream carries
-  noise-level contrast on most vocabularies.
+- ~~**The ungated-trigger ablation**~~ — **run 2026-08-11: correct on 4 of 4 shut seeds**
+  (pre-registered bar was ≥2). Forced to crystallize with no gate, every shut seed wrote a
+  rule mapping both polarities correctly. The signal was in the episodes and the estimator
+  missed it. Artifacts: `results/shift/ungated_ablation.<seed>.json`; details in
+  [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §9.
+- **Persist per-trial correctness** — now the immediate item. The ablation had to reconstruct
+  which trials failed (live correctness was never stored), using a proxy that is cleaner than
+  live reality. Until the live gate sees the same split, a bad featurization and a noisy
+  failure signal are indistinguishable — which makes this a prerequisite for the next item.
+- **Residual featurization** — the estimator contrasts raw embedding means; the shut seeds
+  show that stream carries noise-level contrast on most vocabularies *as currently measured*.
 - **The label-noise wedge** — the third way to break copying (after geometry, which failed,
   and time, which split): exemplar-copying inherits annotator noise one-for-one at
   retrieval; a crystallized rule is a pooled majority-policy estimator, noise-free at

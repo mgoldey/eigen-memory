@@ -318,8 +318,12 @@ version:
   *(Ran 2026-07-22/26: pilot seed fired end-to-end and scored 0.911 vs 0.522 for the kill
   arm — rerun 2026-08-11 on a fixed rule extractor, 0.922, axiom clean of chain-of-thought;
   the five-seed pre-registered endpoint missed — pooled Δ +0.078 vs a +0.10 bar, gate
-  fired 1/5 seeds, shut seeds shown signal-starved by calibration. See README "Act three"
-  and docs/NEXT_EXPERIMENT.md §6–8.)*
+  fired 1/5 seeds. The calibration read the shut seeds as signal-starved; the ungated
+  ablation — run 2026-08-11 — overturned that on the signal-existence question: forced to
+  crystallize with no gate, all 4 shut seeds wrote rules correct on both polarities. The
+  signal was there and the live estimator missed it, with the caveat that the ablation's
+  reconstructed failure signal is cleaner than live. See README "Act three" and
+  docs/NEXT_EXPERIMENT.md §6–9.)*
 - **A 60-item executor pre-test** (**RFμ**: rule vs copy vs conflicting contexts) to check a
   model can apply a rule at all before burning a run — gemma3:4b already failed this, so
   candidates start at 12B.

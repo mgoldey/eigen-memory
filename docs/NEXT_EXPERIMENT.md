@@ -359,7 +359,11 @@ per-check means were 0.81–0.85. The apparent direction-stability on shut seeds
 what overlapping-window noise produces (consecutive windows share ~5/6 of residuals).
 **Conclusion: the shut seeds are signal-starved, not threshold-starved — no gate honoring
 a 5% run-level false-fire budget fires on them — and the pre-registered v2 Treatment
-re-run is cancelled as pointless-by-calibration** (the sim killed the spend before it
+re-run is cancelled as pointless-by-calibration**
+*(Superseded on the signal-existence question by the §9 ablation, run 2026-08-11: all four
+shut seeds crystallized correct rules from the same windows, so the signal was present. What
+survives here is the narrower claim — no gate fires on **this live statistic** at an honest
+budget. The gap between the two is the fail/succ split quality; see §9.)* (the sim killed the spend before it
 started; that is what these gates are for). Caveat: the sim plants a rank-1 shift in iid
 gaussian embeddings, so the snr↔ratio mapping to live data is approximate — but the
 within-sim v1-vs-v2 comparison is exact and answers the amendment's question. The live
@@ -414,13 +418,14 @@ So the result decomposes cleanly:
 This is the pre-registration's named failure mode ("G3 never fires → report that the gate
 correctly identifies this structure as not spectrally compressible") landing on 4 of 5
 seeds, with the pilot seed showing what happens when it does fire. Follow-ups, in order:
-(1) ~~the §7 gate-v2 re-run~~ — cancelled by its own calibration (§7 outcome: the shut
-seeds are signal-starved, not threshold-starved; v2 fires no more than v1 at an honest
-budget); (2) an exploratory ungated arm (crystallize on a fixed schedule) — now doing
-double duty as the signal-vs-estimator arbiter; (3) residual featurization work if the
-ungated arm shows the signal was there; (4) the label-noise wedge, unchanged.
+(1) ~~the §7 gate-v2 re-run~~ — cancelled by its own calibration (§7 outcome: v2 fires no
+more than v1 at an honest budget on the live statistic); (2) ~~an exploratory ungated arm~~
+— **run 2026-08-11, §9: correct on 4 of 4, the signal WAS in the episodes**; (3) persist
+per-trial correctness so the live gate sees the split the ablation reconstructs — now the
+immediate item, and a prerequisite for (4); (4) residual featurization work; (5) the
+label-noise wedge, unchanged.
 
-## 9. Ungated-trigger ablation protocol (2026-07-26, pre-registered; not yet run)
+## 9. Ungated-trigger ablation protocol (2026-07-26, pre-registered) — RUN 2026-08-11
 
 Script: `ungated_ablation.py` (written box-idle, untested until Ollama is free). Per shut
 seed {2, 18, 23, 7}: rebuild the end-of-run window (embeddings + stale-copier proxy for
@@ -438,3 +443,44 @@ axioms is explicitly out of scope for this ablation (a wrong forced axiom poison
 held-out accuracy is already known from the flip experiment; the question here is signal
 existence, not deployment policy). Exploratory label, reported alongside — the 5-seed
 verdict (§8) is unaffected either way.
+
+**Result (2026-08-11): correct on 4 of 4 — the pre-registered "signal was there" branch,
+cleared with margin (bar was ≥2).** Artifacts: `results/shift/ungated_ablation.<seed>.json` ×4.
+
+| seed | crystallized rule | planted post-rule | G4 |
+|---|---|---|---|
+| 2 | completed→ESCALATE; incomplete→DEFER | request→DEFER, report→ESCALATE | both ✓ |
+| 18 | incomplete/pending→FILE; completed→DEFER | request→FILE, report→DEFER | both ✓ |
+| 23 | completed/handled→FILE; pending→DEFER | request→DEFER, report→FILE | both ✓ |
+| 7 | resolved/handled→FILE; pending/awaiting→DEFER | request→DEFER, report→FILE | both ✓ |
+
+All four are clean prose (101–165 chars, no CoT residue). Each expresses the
+completed-vs-incomplete distinction extensionally, as seed 42 did — marker enumeration
+rather than the request/report intension — and each maps both polarities correctly.
+
+Under the ablation's reconstruction λ₁ exceeds the noise edge on all four (ratio 1.02–1.46),
+where the live runs' final checks read 0.75–0.91:
+
+| seed | live ratio (last check) | ablation ratio |
+|---|---|---|
+| 2 | 0.88 | 1.14 |
+| 18 | 0.87 | 1.02 |
+| 23 | 0.75 | 1.46 |
+| 7 | 0.91 | 1.18 |
+
+**What this establishes:** the shut seeds were *not* signal-starved. The failure structure is
+real and rank-1-recoverable from the same episodes.
+
+**What it does not establish:** that the live gate is simply miscalibrated. The proxy for
+`was_correct` is *cleaner* than live reality — live failures include executor mistakes that
+are noise rather than rule-shift signal — so an unknown part of the ratio gap is the proxy
+denoising the fail/succ split rather than a featurization defect. This is the sim-to-live
+mapping the protocol above named as the open question, and it is narrowed, not closed.
+
+**Consequent next step**, replacing "featurization work follows" as the immediate item:
+persist per-trial correctness in the harness so the live gate sees the same split the
+ablation reconstructs. That is a harness change, and it is a prerequisite for interpreting
+any featurization experiment — without it, one cannot tell a bad featurization from a noisy
+correctness signal. §7's "signal-starved" conclusion is superseded on the signal-existence
+question; its narrower finding (v2 fires no more than v1 at an honest false-fire budget on
+the *live* statistic) is unaffected.

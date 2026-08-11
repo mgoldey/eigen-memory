@@ -372,10 +372,22 @@ had. Second, at that budget the evidence-accumulating gate fires no more often t
 crude streak rule anywhere on the grid. And the sweep's ratio column locates the shut
 seeds precisely: detection under either rule needs the statistic sustained at ~1.05× the
 noise edge; pure noise averages 0.87×; the shut seeds lived at 0.81–0.85×. They weren't
-threshold-starved. They were **signal-starved** — no gate that honors a false-fire budget
-fires there, and a gate that would have is a gate that compresses noise. The mechanism's
-one-in-five fire rate wasn't a bug in the gate; it was the gate telling the truth about
-the embedding stream it was watching.
+threshold-starved. On the statistic the gate watches, they looked **signal-starved** — no gate
+honoring a false-fire budget fires there, and a gate that would have is a gate that compresses
+noise.
+
+That was where this ended until the ablation ran. **It didn't hold.** Forced to crystallize
+from those same four windows with no gate at all, every shut seed wrote a correct rule —
+4 of 4, both polarities, against a pre-registered bar of 2. The signal was in the episodes.
+What the gate was telling the truth about was its own statistic, not the stream.
+
+The honest qualifier: the ablation had to reconstruct which trials failed, because per-trial
+correctness was never persisted, and that reconstruction is *cleaner* than live reality — live
+failures include ordinary executor mistakes that are noise, not rule-shift signal. So some of
+the gap between "sub-threshold live" and "supra-threshold rebuilt" is a better failure signal
+rather than better featurization. Which makes the next move a harness change rather than a
+modeling one: store per-trial correctness, then ask the featurization question with a split
+you can trust.
 
 So act three ends the way act two did: the headline number lost to the bar, and the
 autopsy is worth more than the number. Conditional on detection, compression beats
