@@ -150,7 +150,14 @@ class AgenticMemoryLoop:
         self.static_context = static_context
         # If client not provided, default to local Ollama
         if openai_client is None:
-            self.client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
+            # Explicit timeout + retries. The SDK default is 600 s, so a single
+            # dropped keepalive to a LOCAL server stalls a 2050-call run for ten
+            # minutes (observed twice on 2026-08-11: socket ESTAB, 0 bytes queued
+            # both directions, while a fresh request to the same server answered
+            # in under 2 s). Calls here take ~9 s, so 120 s is generous headroom
+            # while still failing fast enough to retry rather than hang.
+            self.client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama",
+                                 timeout=120.0, max_retries=3)
         else:
             self.client = openai_client
 
