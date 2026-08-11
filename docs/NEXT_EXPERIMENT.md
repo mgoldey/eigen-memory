@@ -236,6 +236,14 @@ RULE line, never store scaffolding.
 > rerun on the fixed extractor is required before it can be cited as one.** The pre-registered
 > five-seed verdict (miss, +0.078) is unaffected in direction — seed 42 was the only firing
 > seed, so a rerun moves the one number the pooled result leans on.
+>
+> **Rerun attempted and abandoned (2026-08-10).** Started on the fixed extractor and stopped
+> after 2 of 5 arms on wall-clock cost (~6 h/seed measured on this hardware; see the runtime
+> note in the README). What it produced before being stopped, for whatever it is worth:
+> Baseline 0.011 (archived run: 0.033) and **Oracle_Post 0.989** (archived: 0.967) — i.e. the
+> executor still applies the true rule near-perfectly, so the premise the experiment rests on
+> reproduces. `Treatment_Eigen` is the arm that would settle the question and it runs last, so
+> it was never reached. **The caveat above stands unchanged: 0.911 is not yet a clean test.**
 
 The rerun crystallized a genuinely legible prose rule
 — "resolved / already through review → ESCALATE; pending / awaiting review → DEFER (unless

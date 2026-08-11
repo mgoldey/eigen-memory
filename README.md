@@ -252,7 +252,10 @@ TASK=trec uv run python simulate.py          # TREC question classification
 uv run python guardrail_flip.py 42           # flip-task pre-run gates (rule visibility, copy ceiling)
 uv run python run_flip_experiment.py 42      # the 4-arm flip experiment (incl. Oracle)
 
-# Act three — Rule-Shift (needs gemma4:12b; ~1-2 h per seed)
+# Act three — Rule-Shift (needs gemma4:12b; budget most of a day per seed)
+# Measured 2026-08-10 on a single consumer GPU: ~9 s per executor call and
+# ~2,050 calls per seed across the five arms, so 6+ h wall-clock. The two
+# memory arms dominate (retrieval adds embedding calls per trial).
 uv run python guardrail_shift.py 42          # pre-run gates for the shift task
 uv run python run_shift_experiment.py 42     # the 5-arm shift experiment (incl. recency kill arm)
 
