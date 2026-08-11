@@ -1,0 +1,25 @@
+{
+  "seed": 18,
+  "executor": "gemma4:12b",
+  "kernel_cfg": {
+    "window": 60,
+    "contrast_on": "embedding_mean",
+    "consecutive_detections": 3,
+    "stability_cos": 0.5
+  },
+  "proxy": "stale-copier",
+  "lam1": 0.05359125036354188,
+  "edge": 0.052603516987540164,
+  "ratio": 1.0187769455839935,
+  "n_fail_window": 43,
+  "n_succ_window": 17,
+  "rule": "RULE: If the task is currently incomplete or pending action (e.g., \"open\", \"waiting\", \"pending\"), label as FILE; if the task is completed or handled, label as DEFER.",
+  "pre_rule": {
+    "request": "ESCALATE",
+    "report": "DEFER"
+  },
+  "post_rule": {
+    "request": "FILE",
+    "report": "DEFER"
+  }
+}

@@ -130,7 +130,10 @@ def run_seed(client, seed):
 
 
 def main():
-    client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
+    # Same timeout/retry as the agent's client: the SDK default is 600 s, so a
+    # dropped local connection stalls the run for ten minutes (see 017f12c).
+    client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama",
+                    timeout=120.0, max_retries=3)
     for seed in SEEDS:
         run_seed(client, seed)
     print("\nG4 scoring is a human read: does each rule map BOTH polarities to "

@@ -1,0 +1,25 @@
+{
+  "seed": 7,
+  "executor": "gemma4:12b",
+  "kernel_cfg": {
+    "window": 60,
+    "contrast_on": "embedding_mean",
+    "consecutive_detections": 3,
+    "stability_cos": 0.5
+  },
+  "proxy": "stale-copier",
+  "lam1": 0.06374632825882845,
+  "edge": 0.05403885776101694,
+  "ratio": 1.1796387062943137,
+  "n_fail_window": 35,
+  "n_succ_window": 25,
+  "rule": "RULE: Label as FILE if the task is resolved or handled; label as DEFER if the task is pending or awaiting action.",
+  "pre_rule": {
+    "request": "ESCALATE",
+    "report": "FILE"
+  },
+  "post_rule": {
+    "request": "DEFER",
+    "report": "FILE"
+  }
+}
