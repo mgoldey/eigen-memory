@@ -2,6 +2,10 @@ services:
   db:
     image: pgvector/pgvector:pg16
     container_name: memory-db
+    # Long runs (6+ h) outlive reboots; without this the container stays down
+    # after a crash and the driver dies mid-arm. "unless-stopped" survives a
+    # reboot but still honours a deliberate `docker stop`.
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password

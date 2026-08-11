@@ -5,4 +5,5 @@ __pycache__/
 .pytest_cache/
 .runlogs/
 shift_pilot_*.log
+shift_rerun_driver.log
 *.out
