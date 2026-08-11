@@ -300,9 +300,9 @@ whose founding lesson is that this bug class recurs. The fixed crystallizer — 
 |---|---:|
 | Baseline (no memory) | 0.033 |
 | Recency_RAG (newest-first + staleness hint — the kill arm) | 0.522 |
-| Control_RAG | 0.556 |
-| **Treatment_Eigen (one crystallized rule, exemplars retired)** | **0.911** |
-| Oracle (true post-shift rule pasted) | 0.967 |
+| Control_RAG | 0.533 |
+| **Treatment_Eigen (one crystallized rule, exemplars retired)** | **0.922** |
+| Oracle (true post-shift rule pasted) | 0.978 |
 
 The detector stayed silent through 100 pre-shift trials (one marginal flicker, correctly
 rejected by the streak rule), watched batch surprise spike 0.30 → 9.78 NLL at the shift (a
@@ -315,15 +315,16 @@ on three consecutive checks, and crystallized exactly one axiom:
 
 Both polarity clusters map to the correct post-shift labels. And the parenthetical is a
 **stale fragment of the pre-shift rule** that a human auditor can see and strike — the
-auditability pitch writing its own demo. (It names a training-vocabulary marker, so it never
-fired on the disjoint held-out set; requests scored 1.00.)
+auditability pitch writing its own demo. (It names a training-vocabulary marker that is absent
+from the disjoint held-out set; requests still scored 0.949, reports 0.902 — the 7 misses
+across 90 items were not traced to this clause.)
 
-The paranoia pass, since a result this clean invites it: Eigen beats the kill arm by +0.389
-with 39-vs-4 discordant pairs (McNemar p = 1.6e-8); the axiom was the *entire* context on all
+The paranoia pass, since a result this clean invites it: Eigen beats the kill arm by +0.400
+with 39-vs-3 discordant pairs (McNemar p = 5.6e-9); the axiom was the *entire* context on all
 90 test items, and an empty context scores 0.033, so the content carries the effect; and a
 copy policy with **perfect** staleness filtering — retrieval restricted to only the 60
 post-shift episodes, stronger than any realizable recency weighting — ceilings at 0.778,
-well below 0.911. No exemplar policy over this buffer reaches the treatment number.
+well below 0.922. No exemplar policy over this buffer reaches the treatment number.
 
 The honest scope: this is **one seed and one crystallization event**, on a task built to be
 winnable (rank-1, embedding-visible — the visibility lesson applied in reverse). The
@@ -394,7 +395,7 @@ to liability* — is not exotic:
 
 - **Ticket triage and support routing.** An org changes its escalation policy; every
   historical ticket in the retrieval index encodes the old routing. A RAG triage bot copies
-  stale precedent indefinitely — Control_RAG at 0.556 *is* that bot. The fix this mechanism
+  stale precedent indefinitely — Control_RAG at 0.533 *is* that bot. The fix this mechanism
   proposes: detect the post-change error cluster, distill "billing requests now go to the
   platform team," show a human the sentence.
 - **Content moderation.** Policies update constantly; precedent-based labeling is

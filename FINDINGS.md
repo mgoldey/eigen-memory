@@ -316,7 +316,8 @@ version:
   re-crystallized rule stays current. Pre-registered gates include a recency-weighted-RAG
   control arm (the baseline that could kill it) and a rank-1 failure axis by construction.
   *(Ran 2026-07-22/26: pilot seed fired end-to-end and scored 0.911 vs 0.522 for the kill
-  arm; the five-seed pre-registered endpoint missed — pooled Δ +0.078 vs a +0.10 bar, gate
+  arm — rerun 2026-08-11 on a fixed rule extractor, 0.922, axiom clean of chain-of-thought;
+  the five-seed pre-registered endpoint missed — pooled Δ +0.078 vs a +0.10 bar, gate
   fired 1/5 seeds, shut seeds shown signal-starved by calibration. See README "Act three"
   and docs/NEXT_EXPERIMENT.md §6–8.)*
 - **A 60-item executor pre-test** (**RFμ**: rule vs copy vs conflicting contexts) to check a

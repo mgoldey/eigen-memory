@@ -22,7 +22,7 @@ Four controlled experiments ask where the rules beat the retrieval.
 | 1 | **Number-game** — classify integers by a hidden arithmetic rule | tie | The embeddings can't see the rule: text embeddings don't encode primality, so *no* memory can work. |
 | 2 | **TREC** — question-type classification | RAG wins (0.80 vs 0.75) | The rig detects real memory benefits — but one retrieved example settles each question, so rules have nothing to add. |
 | 3 | **Label-flip** — purpose-built, 4 seeds, held-out | tie (0.617 vs 0.600) | The trigger stayed shut on 3 of 4 seeds, where predictions were *item-identical* to RAG's; the whole gap is one seed's single wrong-mapping axiom. Two structural reasons, both below. |
-| 4 | **Rule-Shift** — the rule flips mid-run, 12B model, 5 seeds | **miss** — +0.078 against a +0.10 bar set in advance | The trigger fired on only 1 of 5 seeds. But on that seed, the rule the agent wrote beat copying **0.911 vs 0.522**. |
+| 4 | **Rule-Shift** — the rule flips mid-run, 12B model, 5 seeds | **miss** — +0.078 against a +0.10 bar set in advance | The trigger fired on only 1 of 5 seeds. But on that seed, the rule the agent wrote beat copying **0.922 vs 0.522**. |
 
 The first two experiments fail for reasons that have nothing to do with rule-compression: one
 picked a rule the embeddings can't represent, the other a task a single example already solves.
@@ -196,12 +196,13 @@ model's error on the true label jumped 0.30 → 9.78 — from the run log, not a
 artifact), the trigger detected on exactly 3
 consecutive checks, and the crystallizer wrote one legible prose rule (including a stale
 exception clause a human reviewer would strike — the auditability pitch, self-demonstrating).
-Held-out: **0.911 vs 0.522** for the kill arm (p = 1.6e-8), beating even a copy policy given
-*perfect* knowledge of which examples were stale (0.778). **Caveat, found in a later audit
-and worth stating up front:** the extractor that stored that rule kept ~250 chars of trailing
-chain-of-thought after it, so this run injected CoT residue alongside the rule and is *not* a
-clean test of the stated mechanism. Fixed and regression-tested since; the number stands as
-measured but needs a rerun before it can be cited as clean. Details and the audit trail:
+Held-out: **0.922 vs 0.522** for the kill arm (p = 5.6e-9, exact McNemar), beating even a copy policy given
+*perfect* knowledge of which examples were stale (0.778). An audit found that the extractor
+behind the original 0.911 run kept ~250 chars of trailing chain-of-thought after the rule, so
+that run injected CoT residue and was not a clean test. **Rerun on the fixed extractor
+(2026-08-11): the result holds.** The stored axiom is one clean rule line with no CoT, and
+held-out accuracy came in at **0.922** (original: 0.911). All four control arms reproduced
+within ±0.022, so the rig was stable across the comparison. Details and the audit trail:
 [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §6. **Five-seed verdict, scored against
 the bar set in advance: miss** — a **+0.078** gain over the kill arm **against the +0.10 bar**
 (the direction is real, p = 0.002, but it didn't clear the line). The trigger fired on **1 of

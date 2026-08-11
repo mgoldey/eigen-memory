@@ -205,7 +205,9 @@ regardless of the coin flip.
 
 Held-out post-shift, frozen memory, disjoint vocab: Baseline 0.033 · Oracle_Post 0.967 ·
 Control_RAG 0.556 · Recency_RAG 0.522 · **Treatment_Eigen 0.911** (requests 1.00, reports
-0.84). Primary endpoint Δ vs Recency_RAG = **+0.389** (bar +0.10), McNemar p = 1.6e-8
+0.84). *(These are the original, residue-affected numbers, kept as the record of what was run
+that day; the clean rerun below supersedes them — Treatment_Eigen 0.922.)* Primary endpoint Δ
+vs Recency_RAG = **+0.389** (bar +0.10), McNemar p = 1.6e-8
 (39-vs-4 discordants); vs Control_RAG p = 9.7e-9. Secondary endpoint (within 0.05 of
 Oracle): 0.056 — just misses. G3 fired exactly as pre-registered (a marginal pre-shift
 detection was rejected by the streak rule when λ dipped back under the edge; then three
@@ -244,6 +246,30 @@ RULE line, never store scaffolding.
 > executor still applies the true rule near-perfectly, so the premise the experiment rests on
 > reproduces. `Treatment_Eigen` is the arm that would settle the question and it runs last, so
 > it was never reached. **The caveat above stands unchanged: 0.911 is not yet a clean test.**
+>
+> **Rerun completed (2026-08-11) — the result holds.** All five arms on the fixed extractor,
+> same seed and executor. The stored axiom is a single clean rule line with **no trailing
+> CoT**: *"If the status is 'resolved' or 'already through review', label as ESCALATE; if the
+> status is 'pending' or 'awaiting review', label as DEFER (unless it is a specific 'still
+> awaiting review' case which is FILE)."* — same rule, same stale exception clause, same
+> strength (1.31) as the residue-affected run, minus the residue. Held-out **0.922** vs the
+> archived 0.911 (+0.011). The four control arms reproduced within ±0.022 — Baseline 0.033
+> (=), Oracle_Post 0.978 (+0.011), Control_RAG 0.533 (−0.022), Recency_RAG 0.522 (=) — so the
+> rig was stable and the comparison is like-for-like. Exact McNemar on the rerun's
+> `test_correct` vectors: 39 items Eigen-only correct vs 3 Recency-only, **p = 5.6e-9**.
+> Per-class, Treatment scores requests 0.949 / reports 0.902 against Recency's 0.256 / 0.725
+> — the gain is concentrated in `request`, the class the shift redefined (FILE → DEFER).
+> **Conclusion: the 0.911 was not an artifact of the injected CoT residue; one clean rule line
+> reaches the same place.** The pre-registered five-seed verdict (miss, +0.078) is unchanged in
+> direction; substituting 0.922 for 0.911 moves the pooled gain by +0.002, still short of the
+> +0.10 bar. Pre-fix artifact archived as
+> `results/shift/comparison_results.shift.42.cotresidue.json`.
+>
+> Two operational bugs surfaced during the rerun and were fixed (they cost ~4 h of wall clock,
+> not any result): `memory-db` had no restart policy, so a reboot mid-run left Postgres down
+> (`3be46d9`); and the Ollama client was built with no `timeout`, inheriting the SDK's 600 s
+> default, so a single dropped local connection stalled the run for ten minutes — hit twice,
+> now `timeout=120, max_retries=3` (`017f12c`).
 
 The rerun crystallized a genuinely legible prose rule
 — "resolved / already through review → ESCALATE; pending / awaiting review → DEFER (unless
@@ -259,9 +285,10 @@ Complaints pre-empted, with the artifact that answers each:
   requires the 5-seed run (open).
 - *"The kill arm is a strawman"* — a copy policy with PERFECT staleness filtering (store
   restricted to the 60 post-shift trials) ceilings at 0.756 (nn) / 0.778 (top-5 majority):
-  below Eigen 0.911. No exemplar policy over this buffer reaches the Treatment number.
-  Separately, realized Recency_RAG (0.522) landed *below* Control_RAG (0.556) — in-context
-  recency-weighting is hard to execute even with newest-first ordering and a staleness hint.
+  below Eigen 0.922. No exemplar policy over this buffer reaches the Treatment number.
+  Separately, realized Recency_RAG (0.522) landed *below* Control_RAG (0.533 on the rerun,
+  0.556 as originally run) — in-context recency-weighting is hard to execute even with
+  newest-first ordering and a staleness hint.
 - *"You amended the G3 estimator mid-stream"* — amended BEFORE the pilot, by arithmetic
   (cPCA is blind to location differences); and now calibrated to the same standard as the
   original gate: results/calibration/gate_roc_mean.json shows noise fire-rate 0.00–0.05 and fire-rate 1.00 from
@@ -350,11 +377,15 @@ respawn — results/shift/comparison_results.shift.<seed>.json ×5).
 
 | seed | gate | Eigen | Recency_RAG | Control_RAG | Δ (primary) |
 |-----:|------|------:|------------:|------------:|------------:|
-| 42 | **fired** | 0.911 | 0.522 | 0.556 | **+0.389** |
+| 42 | **fired** | 0.911 † | 0.522 | 0.556 | **+0.389** |
 | 2 | shut | 0.644 | 0.544 | 0.644 | +0.100 |
 | 18 | shut | 0.500 | 0.567 | 0.500 | −0.067 |
 | 23 | shut | 0.600 | 0.611 | 0.611 | −0.011 |
 | 7 | shut | 0.633 | 0.656 | 0.633 | −0.022 |
+
+† Seed 42 was rerun on the fixed extractor (2026-08-11) and scored **0.922**; the table keeps
+the as-run 0.911 because the pooled figures below were computed from it. Substituting the
+rerun moves the pooled Δ by +0.002, which does not change the verdict.
 
 **Pooled (450 paired items): Eigen 0.658, Recency_RAG 0.580, Δ = +0.078 — below the
 pre-registered +0.10 bar. Endpoint NOT met**, despite the direction being real (McNemar
