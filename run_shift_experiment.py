@@ -116,6 +116,19 @@ def run_arm(name, conn, trials, heldout, *, retrieval, eigen, static_context="",
                 result["axioms_after_batch"].append(len(agent.kernel.consumed_directions))
             phase = "pre" if (i + 1) * BATCH <= N_SHIFT_PRE else "POST"
             print(f"[{name}] trial batch {i+1}/{n_batches} ({phase}-shift): acc={acc:.2f}", flush=True)
+        # Item-level trial correctness, not just the two means. The gate's
+        # fail/succ split is built from exactly this signal, so without it an
+        # offline gate re-analysis has to RECONSTRUCT which trials failed --
+        # which is what ungated_ablation.py does with its stale-copier proxy,
+        # and why that ablation can show the signal was recoverable without
+        # establishing whether the live gate's miss is a featurization problem
+        # or merely a noisy correctness signal. Persisting it makes the two
+        # distinguishable. Cheap: 160 bools per arm. Present only on the three
+        # arms that train (the memory arms); Baseline and Oracle_Post skip the
+        # trial stream entirely, and neither feeds a gate. The bool() cast is
+        # load-bearing: run_phase yields numpy arrays and np.bool_ is not
+        # JSON-serializable.
+        result["trial_correct"] = [bool(c) for c in trial_correct]
         result["pre_shift_acc"] = float(np.mean(trial_correct[:N_SHIFT_PRE]))
         result["post_adapt_acc"] = float(np.mean(trial_correct[N_SHIFT_PRE:]))
         print(f"[{name}] trial-stream acc: pre-shift {result['pre_shift_acc']:.3f} "

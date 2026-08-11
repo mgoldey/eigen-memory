@@ -484,3 +484,28 @@ any featurization experiment — without it, one cannot tell a bad featurization
 correctness signal. §7's "signal-starved" conclusion is superseded on the signal-existence
 question; its narrower finding (v2 fires no more than v1 at an honest false-fire budget on
 the *live* statistic) is unaffected.
+
+### 9a. Correctness persistence + gate replay (2026-08-11, built; awaiting data)
+
+`run_shift_experiment.py` now writes `trial_correct` — item-level trial-stream correctness —
+on each of the three training arms. Previously only the two summary means (`pre_shift_acc`,
+`post_adapt_acc`) survived, and per-item correctness died with the Postgres container; it was
+written to `episodic_buffer.was_correct` but never serialized. This is the only genuinely
+unrecoverable input to the gate: residuals are deterministic from the trial text and can be
+rebuilt at will, which is exactly what the §9 ablation does.
+
+`gate_replay.py` consumes it. For a given seed it computes the end-of-run contrast statistic
+twice over identical featurization — once with the ablation's stale-copier proxy, once with
+the real split — and prints both beside the live run's own last check. The comparison is
+designed to separate the two candidate causes that §9 left entangled:
+
+| pattern | reading |
+|---|---|
+| live ≈ replay < proxy | **featurization** — a clean split doesn't help; the embedding-mean contrast is the bottleneck |
+| live < replay ≈ proxy | **label noise** — the gate was starved by executor error polluting the fail/succ split |
+
+**Status: no data yet.** Every committed artifact predates the field, so `gate_replay.py`
+currently skips all five seeds by design rather than guessing. Answering the question requires
+rerunning at least one gate-shut seed's `Treatment_Eigen` arm (~1 h each on this hardware).
+Seed 23 is the most informative single seed — it showed the widest proxy-vs-live gap in §9
+(ablation ratio 1.46 against a live 0.75).

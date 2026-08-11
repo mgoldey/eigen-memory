@@ -286,10 +286,14 @@ What its miss opens up, in order — full ledger in
   rule mapping both polarities correctly. The signal was in the episodes and the estimator
   missed it. Artifacts: `results/shift/ungated_ablation.<seed>.json`; details in
   [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §9.
-- **Persist per-trial correctness** — now the immediate item. The ablation had to reconstruct
-  which trials failed (live correctness was never stored), using a proxy that is cleaner than
-  live reality. Until the live gate sees the same split, a bad featurization and a noisy
-  failure signal are indistinguishable — which makes this a prerequisite for the next item.
+- **Persist per-trial correctness** — *built 2026-08-11, awaiting data.* The ablation had to
+  reconstruct which trials failed (live correctness was never stored), using a proxy cleaner
+  than live reality. The harness now writes `trial_correct` per trial, and
+  [gate_replay.py](gate_replay.py) recomputes the gate statistic on the real split versus the
+  proxy over identical featurization — which separates "bad featurization" from "noisy failure
+  signal", the two causes the ablation left entangled. No artifact carries the field yet, so
+  this needs one gate-shut seed rerun (~1 h) before it answers anything. Seed 23 is the
+  sharpest test: proxy ratio 1.46 against a live 0.75.
 - **Residual featurization** — the estimator contrasts raw embedding means; the shut seeds
   show that stream carries noise-level contrast on most vocabularies *as currently measured*.
 - **The label-noise wedge** — the third way to break copying (after geometry, which failed,
@@ -350,6 +354,7 @@ gate_roc.py                     # v1 trigger: fire on a run of checks beating th
 gate_roc_mean.py                # the 2026-07-17 mean-contrast amendment
 gate_roc_v2.py                  # v2: evidence accumulation — the act-three autopsy
 ungated_ablation.py             # bypasses the gate entirely: was the signal there at all?
+gate_replay.py                  # replays the gate on real vs proxy correctness
 
 schema.sql                      # episodic_buffer + semantic_core (pgvector)
 src/config.py                   # env-driven DB / Ollama / embedding-model config
