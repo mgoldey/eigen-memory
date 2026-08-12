@@ -42,6 +42,20 @@ MIN_SUCC_RESIDUALS = 10
 # clears it with probability ~1/(N+1) per check — 20 shuffles keeps that under
 # 5% (the old value of 5 allowed ~17%, and the gate is re-checked every batch).
 N_PERMUTATIONS = 20
+# Permutations for the SEQUENTIAL gate's p-value. Far more than the max-edge rule
+# needs, because a p-value's resolution floor is 1/(1+N): at N=20 the smallest
+# attainable p is 0.048, which cannot supply meaningful evidence. 199 gives a
+# floor of 0.005 and is still cheap (the permutation loop is O(N) mean contrasts).
+N_PERMUTATIONS_SEQ = 199
+# Power-calibrator exponent mapping p-values to e-values: e = k * p**(k-1), which
+# integrates to exactly 1 against a uniform p (so E[e] = 1 under the null). 0.4
+# keeps sensitivity to small p while capping one check at ~9.6x evidence.
+E_CALIBRATOR_KAPPA = 0.4
+# Anytime-valid firing threshold: the e-process fires when its running product
+# reaches 1/ALPHA. Ville's inequality bounds the all-time false-fire probability
+# by ALPHA for any stopping time, which is the honest version of the false-fire
+# budget the permutation-quantile-plus-streak rule only approximated.
+E_PROCESS_ALPHA = 0.05
 # The direction must persist across consecutive checks (|cos| above this) before
 # it is trusted — the failure stream is non-stationary, so a one-off axis is noise.
 STABILITY_COS = 0.95
@@ -72,6 +86,108 @@ def _mean_contrast(fail_r, succ_r):
     contrast cannot see (see __init__ notes on contrast_on)."""
     d = fail_r.mean(axis=0) - succ_r.mean(axis=0)
     return float(d @ d), _unit(d)
+
+
+def _evalue_from_null(fail_r, succ_r, n_perm, rng, contrast="mean"):
+    """Permutation e-value for "failures differ from successes along one axis".
+
+    The streak rule compared lam1 against max(null) -- one bit per check, and a
+    threshold whose sampling noise decided seed 18's verdict outright (edge
+    0.03998 vs 0.05232 on identical data, docs/NEXT_EXPERIMENT.md §9a). The same
+    permutations yield a far more informative quantity: the RANK of the observed
+    statistic in the null distribution, i.e. a p-value.
+
+    Uses the (1 + #{null >= obs}) / (1 + n_perm) estimator, which is exactly
+    valid in finite samples (the +1s account for the observed value itself), so
+    p is super-uniform under the null and e = 1/p is a genuine e-value with
+    E[e] <= 1. Independent e-values multiply, which is what lets evidence
+    accumulate across checks instead of being discarded.
+
+    Note e = 1/p is NOT an e-value: E[1/p] = int_0^1 dp/p diverges, and it shows
+    up empirically as a null mean around 7 with a max at the permutation floor.
+    Instead p is passed through the standard power calibrator
+
+        e = kappa * p**(kappa - 1),   kappa in (0, 1)
+
+    which integrates to exactly 1 against a uniform p, so E[e] = 1 under the
+    null by construction. kappa = 0.4 is a common default: it keeps useful
+    sensitivity to small p while bounding a single check's contribution (at the
+    1/200 floor it yields ~9.6x, not 200x).
+    """
+    stat = _mean_contrast if contrast == "mean" else (
+        lambda a, b: _top_contrast_eig(a, b)[:2])
+    obs, _ = stat(fail_r, succ_r)
+    pooled = np.vstack([fail_r, succ_r])
+    n_fail = len(fail_r)
+    ge = 0
+    for _ in range(n_perm):
+        idx = rng.permutation(len(pooled))
+        lam, _ = stat(pooled[idx[:n_fail]], pooled[idx[n_fail:]])
+        if lam >= obs:
+            ge += 1
+    p = (1.0 + ge) / (1.0 + n_perm)
+    return float(E_CALIBRATOR_KAPPA * p ** (E_CALIBRATOR_KAPPA - 1.0))
+
+
+class _EProcess:
+    """Multiplicative e-process with an anytime-valid firing rule.
+
+    Fires when the running product of e-values reaches 1/alpha. Ville's
+    inequality gives P(sup_t E_t >= 1/alpha) <= alpha for ANY stopping time,
+    so unlike a fixed-window permutation test re-run every batch, checking as
+    often as we like costs nothing in false-fire budget. That is the property
+    the "3 consecutive detections" heuristic was standing in for.
+
+    Tracks log-evidence for numerical stability over long streams.
+
+    Per-check evidence is capped just below the firing threshold, so no single
+    check can fire the process on its own. Seed 2 crossed the old edge once per
+    run (ratios 1.08 and 1.02) and correctly stayed shut both times; a single
+    lucky draw should not be more decisive than that.
+
+    Do NOT floor log_e at 0. An earlier version did, reasoning that a run of
+    uninformative checks should not have to be "paid back" before a real shift
+    can fire. That turns the process into a random walk with a reflecting
+    barrier, which reaches any threshold eventually: it fired on 100% of pure-noise
+    streams in tests/test_sequential_gate.py. Uninformative checks MUST be able
+    to spend accumulated evidence -- that is what pays for the anytime-valid
+    guarantee.
+
+    Firing LATCHES. Ville bounds the probability that the process EVER crosses
+    the threshold, so "has it crossed" is the anytime-valid statement; whether it
+    happens to be above the line at the moment you look is not. Without latching
+    the same evidence reads as fired or not-fired depending on when the caller
+    asks, which is exactly the estimator-variance sensitivity this replaces.
+    """
+
+    def __init__(self, alpha=0.05):
+        self.alpha = alpha
+        self.log_threshold = float(np.log(1.0 / alpha))
+        self.log_e = 0.0
+        self.max_log_e = 0.0
+        self.history = []
+
+    def update(self, e):
+        # Cap one check's contribution strictly below the firing threshold.
+        log_e = float(np.log(max(e, 1e-12)))
+        log_e = min(log_e, self.log_threshold - 1e-9)
+        self.log_e += log_e
+        self.max_log_e = max(self.max_log_e, self.log_e)
+        self.history.append(e)
+        return self.fired
+
+    @property
+    def fired(self):
+        return self.max_log_e >= self.log_threshold
+
+    @property
+    def evidence(self):
+        """Running product, for logging. Clipped to avoid overflow display."""
+        return float(np.exp(min(self.log_e, 700.0)))
+
+    def reset(self):
+        self.log_e = 0.0
+        self.max_log_e = 0.0
 
 
 def crystallization_prompt(side_a, side_b, successes):
@@ -116,6 +232,9 @@ class EigenMemoryKernel:
         window=None,
         contrast_on="residual",
         consecutive_detections=1,
+        sequential_gate=False,
+        n_permutations_seq=N_PERMUTATIONS_SEQ,
+        e_process_alpha=E_PROCESS_ALPHA,
     ):
         self.conn = db_conn
         self.client = openai_client
@@ -171,6 +290,12 @@ class EigenMemoryKernel:
         # Telemetry: (lambda1, permutation edge) per check, and top-3 eigenvalue
         # shares per check for the spectrum heatmap in plot_results.py.
         self.detectability_history = []
+        # Sequential (e-value) trigger. Off by default so every committed result
+        # stays reproducible; the streak rule remains the as-run mechanism.
+        self.sequential_gate = sequential_gate
+        self.n_permutations_seq = n_permutations_seq
+        self._eproc = _EProcess(alpha=e_process_alpha)
+        self.evalue_history = []
         self.spectrum_history = []
 
     # ------------------------------------------------------------------ ingest
@@ -269,16 +394,43 @@ class EigenMemoryKernel:
         )
         self.prev_direction = v_full
 
-        print(
-            f"[EIGEN] lam1={lam1:.3f} edge={edge:.3f} "
-            f"({'detectable' if detectable else 'below edge'}, streak={self._detect_streak}, "
-            f"{'stable' if stable else 'unstable'}, {'novel' if novel else 'consumed'}) "
-            f"fail={len(self.fail_records)} succ={len(self.succ_records)}"
-        )
+        if self.sequential_gate:
+            # Accumulate evidence instead of re-testing from scratch. See
+            # _EProcess / _evalue_from_null for why this replaces both the
+            # permutation-quantile threshold and the consecutive-detection count.
+            e = _evalue_from_null(
+                F_red, S_red, self.n_permutations_seq, self.rng,
+                contrast="mean" if self.contrast_on == "embedding_mean" else "cov",
+            )
+            self._eproc.update(e)
+            self.evalue_history.append(e)
+            triggered = self._eproc.fired
+            print(
+                f"[EIGEN-SEQ] lam1={lam1:.3f} e={e:.2f} E={self._eproc.evidence:.1f} "
+                f"(need {1.0 / self._eproc.alpha:.0f}, {'FIRED' if triggered else 'accumulating'}, "
+                f"{'stable' if stable else 'unstable'}, {'novel' if novel else 'consumed'}) "
+                f"fail={len(self.fail_records)} succ={len(self.succ_records)}"
+            )
+            strength = self._eproc.evidence
+        else:
+            triggered = (detectable
+                         and self._detect_streak >= self.consecutive_detections)
+            print(
+                f"[EIGEN] lam1={lam1:.3f} edge={edge:.3f} "
+                f"({'detectable' if detectable else 'below edge'}, "
+                f"streak={self._detect_streak}, "
+                f"{'stable' if stable else 'unstable'}, "
+                f"{'novel' if novel else 'consumed'}) "
+                f"fail={len(self.fail_records)} succ={len(self.succ_records)}"
+            )
+            strength = lam1 / edge if edge > 0 else 1.0
 
-        if (detectable and self._detect_streak >= self.consecutive_detections
-                and stable and novel):
-            self._crystallize(v_full, strength=lam1 / edge if edge > 0 else 1.0)
+        if triggered and stable and novel:
+            self._crystallize(v_full, strength=strength)
+            if self.sequential_gate:
+                # Evidence for THIS direction is spent; a further axiom must earn
+                # its own. Without this the latched process fires every check.
+                self._eproc.reset()
 
     # ----------------------------------------------------------- crystallization
 

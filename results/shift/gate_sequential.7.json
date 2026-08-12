@@ -1,0 +1,48 @@
+{
+  "seed": 7,
+  "kernel_cfg": {
+    "window": 60,
+    "contrast_on": "embedding_mean",
+    "consecutive_detections": 3,
+    "stability_cos": 0.5
+  },
+  "n_trials": 160,
+  "n_failures": 49,
+  "streak": {
+    "n_axioms": 0,
+    "checks": [
+      {
+        "batch": 15,
+        "lam1": 0.06957248985127824,
+        "edge": 0.04086960102493309,
+        "ratio": 1.7023041112839479,
+        "fired": false
+      },
+      {
+        "batch": 16,
+        "lam1": 0.06548557218481944,
+        "edge": 0.05421823208997178,
+        "ratio": 1.2078145977934178,
+        "fired": false
+      }
+    ]
+  },
+  "sequential": {
+    "n_axioms": 1,
+    "checks": [
+      {
+        "batch": 15,
+        "e": 9.60899547185145,
+        "E": 9.60899547185145,
+        "fired": false
+      },
+      {
+        "batch": 16,
+        "e": 9.60899547185145,
+        "E": 92.33279397806169,
+        "fired": true
+      }
+    ]
+  },
+  "n_axioms_live_run": 0
+}
