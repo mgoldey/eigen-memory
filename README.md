@@ -286,18 +286,32 @@ What its miss opens up, in order — full ledger in
   rule mapping both polarities correctly. The signal was in the episodes and the estimator
   missed it. Artifacts: `results/shift/ungated_ablation.<seed>.json`; details in
   [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §9.
-- ~~**Persist per-trial correctness**~~ — *done 2026-08-11, and it answered the question.* The
-  harness now writes `trial_correct`, and [gate_replay.py](gate_replay.py) recomputes the gate
-  statistic on the real split versus the ablation's proxy over identical featurization. On
-  seed 23 (the sharpest test) the real split gives ratio **0.95** — tracking the live run's
-  0.82, not the proxy's 1.46. **Real correctness labels do not rescue the gate, so the
-  bottleneck is the featurization, not a noisy failure signal.** The proxy scored high because
-  it is an easier problem (43/17 fail-succ on a deterministic copying rule, versus reality's
-  32/28 with mixed causes). One seed; the other three would need a rerun each.
-- **Residual featurization** — **now the immediate item**, promoted from conditional by the
-  replay above. The estimator contrasts raw embedding means, and the shut seeds carry
-  noise-level contrast in that stream even when handed a clean failure signal. This is where
-  the 1-of-5 fire rate actually lives.
+- ~~**Persist per-trial correctness**~~ — *done, and all four shut seeds replayed 2026-08-12.*
+  The harness writes `trial_correct`; [gate_replay.py](gate_replay.py) recomputes the gate
+  statistic on the real split versus the ablation's proxy over identical featurization. The
+  one-seed answer (seed 23: real labels don't rescue the gate ⇒ featurization is the
+  bottleneck) **did not generalize.** Across four seeds λ₁ is *identical* between replay and
+  live run, so every ratio difference is the permutation **edge** moving, not the signal — and
+  on seed 18 the same λ₁ lands on opposite sides of an edge that differs 31% on identical data.
+  **The gate isn't clearly mis-featurized or mis-thresholded; it runs with no margin** (λ₁/edge
+  spans 0.78–1.28 across every seed and statistic), so seed outcomes turn on estimator variance.
+  Seed 7 reached streak 2-of-3 on rerun against a committed run that never crossed the edge.
+  Details: [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §9a.
+- **Stabilize the noise edge** — now the immediate item, ahead of featurization work. More
+  permutation draws, or a pooled/smoothed edge across checks instead of an independent estimate
+  each time. At these effect sizes a featurization improvement and a lucky edge draw are
+  currently indistinguishable, so this gates the next experiment rather than competing with it.
+- **Residual featurization** — the estimator contrasts embedding means (a deliberate
+  amendment: a covariance contrast is provably blind to this shift's *location* structure — see
+  `contrast_on` in [memory_kernel.py](src/eigen_memory_agent/memory_kernel.py)). The open
+  question is whether a *whitened* location statistic — a shrinkage-regularized Fisher
+  direction, which keeps the location sensitivity the amendment requires — beats the unwhitened
+  mean difference at n≈60, d≈768. Blocked on the edge work above: not interpretable until a
+  featurization change can be told apart from estimator variance.
+- **An anytime-valid sequential test** (e-values / testing-by-betting) to replace the
+  permutation-quantile threshold *and* the 3-consecutive-detections streak rule with one test
+  carrying a stated Type-I budget. Two brittle knobs where one principled test would do, and it
+  removes exactly the estimator-variance sensitivity the four-seed replay exposed.
 - **The label-noise wedge** — the third way to break copying (after geometry, which failed,
   and time, which split): exemplar-copying inherits annotator noise one-for-one at
   retrieval; a crystallized rule is a pooled majority-policy estimator, noise-free at

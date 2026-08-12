@@ -531,6 +531,63 @@ Scope: one seed. Seed 23 was picked as the sharpest test (widest proxy-vs-live g
 it is the most informative single seed, but confirming the other three shut seeds needs three
 more `Treatment_Eigen` reruns (~1 h each).
 
+**All four shut seeds replayed (2026-08-12). The one-seed reading did not generalize, and the
+more important finding is about the noise edge, not the split.**
+
+| seed | proxy | live | live run | λ₁ (replay = run) | edge replay | edge run | edge spread |
+|---|---|---|---|---|---|---|---|
+| 2 | 1.14 | 0.89 | 0.84 | 0.04159 | 0.04664 | 0.04956 | 1.06× |
+| 7 | 1.18 | 1.13 | 1.28 | 0.06549 | 0.05804 | 0.05110 | 1.14× |
+| 18 | 1.02 | **1.03** | 0.78 | 0.04107 | 0.03998 | 0.05232 | **1.31×** |
+| 23 | 1.46 | 0.95 | 0.82 | 0.04182 | 0.04392 | 0.05080 | 1.16× |
+
+**λ₁ is identical between the replay and the live run on every seed.** The replay reproduces
+exactly what the gate saw, so *every* live-vs-run ratio difference in this table is the
+permutation edge moving, not the signal. On seed 18 that alone flips the verdict: the same
+λ₁ = 0.04107 reads as detectable against the replay's edge (0.03998) and as below-edge against
+the run's (0.05232). One of four seeds has its outcome decided by which permutation draw came
+up.
+
+Consequences for the §9a hypothesis test:
+
+- Seeds 2 and 23 behave as the one-seed reading predicted — real labels pull the statistic
+  down toward the live run and away from the proxy. Featurization, not label noise.
+- Seed 18 does the opposite (live 1.03 tracks proxy 1.02, against a run of 0.78), but for a
+  reason that has nothing to do with the split: its edge estimate is 31 % apart on identical
+  data.
+- Seed 7 sits above the edge on all three statistics (1.18 / 1.13 / 1.28) and in the live run
+  reached **streak = 2 of the 3** consecutive detections required, with λ₁ (0.065–0.070)
+  well above its committed run's 0.042–0.052. It did not fire only because the trial stream
+  ended before a third check. Its committed run never exceeded 0.93.
+
+**Revised conclusion.** The clean "featurization is the bottleneck" claim from the seed-23
+replay is *not* supported across four seeds. What the four seeds share is that every relevant
+quantity sits within a few percent of the decision boundary: λ₁/edge spans 0.78–1.28 across
+all runs and statistics, and the edge itself varies up to 1.31× on identical data. The gate is
+not obviously mis-featurized *or* mis-thresholded — it is operating with essentially no margin,
+so seed-level outcomes are decided by estimator variance rather than by the presence or absence
+of structure. That is a weaker and less tidy claim than §9a's first draft, and it is the one
+the data supports.
+
+Two consequent work items, in order:
+
+1. **Stabilize the noise edge** — more permutation draws, or pool/smooth the edge across
+   checks rather than re-estimating it independently each time. Cheap, and it is a prerequisite
+   for interpreting any featurization change: right now a featurization improvement and a
+   favorable edge draw are indistinguishable at these effect sizes.
+2. **Replace the threshold-plus-streak rule with an anytime-valid sequential test** (e-values /
+   testing-by-betting). The current design tunes two brittle knobs — a permutation quantile and
+   a consecutive-detection count — where a single sequential test with a stated Type-I budget
+   would do, and it would remove exactly the estimator-variance sensitivity this table exposes.
+
+Held-out accuracy on the reruns (all four still `n_axioms=0`, matching their committed runs):
+seed 2 0.644→0.656, seed 7 0.633→0.567, seed 18 0.500→0.533, seed 23 0.600→0.544. Moves in
+both directions on shut-gate runs, i.e. held-out executor noise. Pooled with seed 42's clean
+0.922, the five-seed Eigen mean goes 0.660→0.644 and Δ vs Recency_RAG goes +0.080→+0.064 —
+still a miss against the +0.10 bar. §8's table keeps the as-run numbers its pooled figures
+were computed from; originals are preserved as
+`results/shift/comparison_results.shift.<seed>.pre-trialcorrect.json`.
+
 Incidental: the rerun's `Treatment_Eigen` scored 0.544 against the committed 0.600. Both are
 shut-gate runs with `n_axioms=0`, so this is executor noise on the held-out set, not a
 mechanism difference. The committed artifact now carries 0.544; the original is preserved at

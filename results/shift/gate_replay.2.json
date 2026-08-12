@@ -1,0 +1,28 @@
+{
+  "seed": 2,
+  "kernel_cfg": {
+    "window": 60,
+    "contrast_on": "embedding_mean",
+    "consecutive_detections": 3,
+    "stability_cos": 0.5
+  },
+  "proxy": {
+    "lam1": 0.05585386408573683,
+    "edge": 0.04887959644185235,
+    "ratio": 1.1426825946114578,
+    "n_fail": 41,
+    "n_succ": 19
+  },
+  "live": {
+    "lam1": 0.041586430701097715,
+    "edge": 0.04663652849058263,
+    "ratio": 0.8917136855393367,
+    "n_fail": 34,
+    "n_succ": 26
+  },
+  "live_run_last_check": [
+    0.04158643042080783,
+    0.049559240214890894
+  ],
+  "n_axioms_live_run": 0
+}

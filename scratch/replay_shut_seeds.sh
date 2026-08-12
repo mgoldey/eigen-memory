@@ -85,5 +85,7 @@ print(f'{"seed":>5} {"proxy":>7} {"live":>7} {"run":>7}')
 for s, p, l, lr in sorted(rows):
     run = f"{lr[0]/lr[1]:.2f}" if lr and lr[0] else "--"
     print(f"{s:>5} {p:>7.2f} {l:>7.2f} {run:>7}")
-print("\nlive tracking run (not proxy) on every seed => featurization is the bottleneck.")
+print("\nRead the RATIOS with care: lambda1 is identical between replay and live")
+print("run on every seed, so any live-vs-run gap is the permutation EDGE, not the")
+print("signal. Check the edge spread before attributing a difference to the split.")
 PY
