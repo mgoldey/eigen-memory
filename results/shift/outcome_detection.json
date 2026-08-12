@@ -1,0 +1,111 @@
+{
+  "alpha": 0.05,
+  "burn_in": 30,
+  "seeds": [
+    {
+      "seed": 2,
+      "p0": 0.5666666666666667,
+      "global_fired": 133,
+      "per_label_fired": 101,
+      "per_label": {
+        "ESCALATE": null,
+        "FILE": null
+      },
+      "novel_label_at": 101,
+      "shift_trial": 100,
+      "n_trials": 160,
+      "pre_rule": {
+        "request": "FILE",
+        "report": "ESCALATE"
+      },
+      "post_rule": {
+        "request": "DEFER",
+        "report": "ESCALATE"
+      }
+    },
+    {
+      "seed": 7,
+      "p0": 0.7333333333333333,
+      "global_fired": 143,
+      "per_label_fired": 105,
+      "per_label": {
+        "ESCALATE": null,
+        "FILE": null
+      },
+      "novel_label_at": 105,
+      "shift_trial": 100,
+      "n_trials": 160,
+      "pre_rule": {
+        "request": "ESCALATE",
+        "report": "FILE"
+      },
+      "post_rule": {
+        "request": "DEFER",
+        "report": "FILE"
+      }
+    },
+    {
+      "seed": 18,
+      "p0": 0.3333333333333333,
+      "global_fired": null,
+      "per_label_fired": 100,
+      "per_label": {
+        "DEFER": null,
+        "ESCALATE": null
+      },
+      "novel_label_at": 100,
+      "shift_trial": 100,
+      "n_trials": 160,
+      "pre_rule": {
+        "request": "ESCALATE",
+        "report": "DEFER"
+      },
+      "post_rule": {
+        "request": "FILE",
+        "report": "DEFER"
+      }
+    },
+    {
+      "seed": 23,
+      "p0": 0.43333333333333335,
+      "global_fired": null,
+      "per_label_fired": 103,
+      "per_label": {
+        "ESCALATE": null,
+        "FILE": null
+      },
+      "novel_label_at": 103,
+      "shift_trial": 100,
+      "n_trials": 160,
+      "pre_rule": {
+        "request": "ESCALATE",
+        "report": "FILE"
+      },
+      "post_rule": {
+        "request": "DEFER",
+        "report": "FILE"
+      }
+    },
+    {
+      "seed": 42,
+      "p0": 0.4666666666666667,
+      "global_fired": 113,
+      "per_label_fired": 100,
+      "per_label": {
+        "ESCALATE": null,
+        "FILE": null
+      },
+      "novel_label_at": 100,
+      "shift_trial": 100,
+      "n_trials": 160,
+      "pre_rule": {
+        "request": "FILE",
+        "report": "ESCALATE"
+      },
+      "post_rule": {
+        "request": "DEFER",
+        "report": "ESCALATE"
+      }
+    }
+  ]
+}
