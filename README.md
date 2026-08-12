@@ -314,10 +314,21 @@ What its miss opens up, in order — full ledger in
   direction, which keeps the location sensitivity the amendment requires — beats the unwhitened
   mean difference at n≈60, d≈768. Blocked on the edge work above: not interpretable until a
   featurization change can be told apart from estimator variance.
-- **An anytime-valid sequential test** (e-values / testing-by-betting) to replace the
-  permutation-quantile threshold *and* the 3-consecutive-detections streak rule with one test
-  carrying a stated Type-I budget. Two brittle knobs where one principled test would do, and it
-  removes exactly the estimator-variance sensitivity the four-seed replay exposed.
+- ~~**An anytime-valid sequential test**~~ — *built 2026-08-12 (`sequential_gate=True`, off by
+  default), and the result is a warning rather than a win.* Type-I control is genuine and
+  measured, and it fires where the streak rule cannot (seed 7: 0→1 axiom; seed 42: 1→2). But
+  **the rules it writes are worse**: three axioms across two seeds, every one with a wrong
+  branch, against the streak rule's one clean axiom. Cause: it fires *before the shift*. On
+  seed 42 the shift lands at batch 11 and the sequential gate fired at batch 7, writing an
+  accurate statement of the **pre-shift** rule that was false four batches later. The
+  3-consecutive requirement was acting as a delay that let the post-shift signal dominate —
+  a real function, not the pure conservatism it looked like. Details:
+  [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §9b.
+- **Validate axioms before injection** — the gap §9b exposes: the crystallizer has no notion of
+  *when* a rule stopped being true, so on a non-stationary target firing faster produces
+  confidently stale rules. Scoring a candidate axiom against recent trials before injecting it
+  would make early firing safe instead of preventing it, and the §9 ablation (4/4 correct rules
+  when forced) suggests the accept rate would be usable.
 - **The label-noise wedge** — the third way to break copying (after geometry, which failed,
   and time, which split): exemplar-copying inherits annotator noise one-for-one at
   retrieval; a crystallized rule is a pooled majority-policy estimator, noise-free at

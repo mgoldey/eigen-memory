@@ -485,6 +485,60 @@ correctness signal. §7's "signal-starved" conclusion is superseded on the signa
 question; its narrower finding (v2 fires no more than v1 at an honest false-fire budget on
 the *live* statistic) is unaffected.
 
+### 9b. Sequential (e-value) trigger — fires more, writes worse rules (2026-08-12)
+
+Built as `sequential_gate=True` (off by default): permutation p-values instead of
+a max-edge comparison, power-calibrated to e-values, accumulated multiplicatively,
+firing at 1/alpha under Ville's inequality. Type-I control is genuine and measured
+(null fire rate 0.000–0.017 across n_fail 25→10, `tests/test_sequential_gate.py`).
+It fires where the streak rule cannot — seed 7 (0→1 axiom), seed 42 (1→2).
+
+**The extra fires are not a win. G4-scoring the rule text reverses the verdict.**
+
+Seed 42, planted post-shift `request → DEFER, report → ESCALATE` (stale pre-shift
+`request → FILE`):
+
+| gate | axiom | verdict |
+|---|---|---|
+| streak | *"unresolved task requiring action → **DEFER**; resolved task being tracked → **ESCALATE**"* | **both branches correct** |
+| sequential [1] | *"still pending or awaiting action → **FILE**; resolution or confirmation → **ESCALATE**"* | request branch is the **pre-shift** label |
+| sequential [2] | *"explicitly stated urgency → **ESCALATE**; otherwise → **FILE**"* | **both branches wrong** |
+
+Seed 7 showed the same failure: *"ongoing need for attention → ESCALATE; otherwise
+→ FILE"* against a planted `request → DEFER`, where ESCALATE is again the pre-shift
+label. Three sequential axioms across two seeds, every one with a wrong branch,
+against the streak rule's one clean axiom.
+
+**Why: it fires before the shift.** The shift lands at batch 11. The sequential
+gate's evidence path on seed 42 is E = 0.8, 1.5, 2.4, 11.8, **30.2 (fired, batch 7)**,
+then collapses to 0.3 by batch 11 and rebuilds to **78.5 (fired, batch 15)**. Axiom
+[1] was written at batch 7 — four batches *before the rule changed*. It is not a
+hallucination; it is an accurate statement of the **pre-shift** rule, which became
+false five batches later. Axiom [2] then fired post-shift with the good direction
+already consumed, landing on a worse axis.
+
+The streak rule's checks on the same stream: 1.00, 0.78, 0.81, 0.82, 1.45, 1.51,
+**1.48 (fired, batch 16)**. Its three-consecutive requirement acted as a *delay*
+that let the post-shift signal dominate before committing. That is a real function,
+not the pure waste §9a treated it as — the earlier framing ("two brittle knobs where
+one principled test would do") was wrong about what the second knob was doing.
+
+**The structural gap this exposes: the crystallizer has no notion of when a rule
+stopped being true.** On a non-stationary target, firing faster produces confidently
+stale rules — the exact failure this project set out to solve, reproduced inside the
+proposed fix. Detection speed and rule validity are in tension, and nothing in the
+current design mediates them.
+
+Two candidate resolutions, neither built:
+
+1. **Validate axioms before injection** — score a candidate against recent trials,
+   reject if it does not beat the current policy. Makes early firing *safe* rather
+   than preventing it, and the §9 ablation (4/4 correct rules when forced) suggests
+   the accept rate would be usable.
+2. **Recency-weight the evidence** — decay contributions so pre-shift evidence
+   cannot fund a post-shift fire. Closer to what the streak rule was doing by
+   accident, but with a stated budget rather than a hand-tuned count.
+
 ### 9a. Correctness persistence + gate replay (2026-08-11, built; awaiting data)
 
 `run_shift_experiment.py` now writes `trial_correct` — item-level trial-stream correctness —
