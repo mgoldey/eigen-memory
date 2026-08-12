@@ -551,8 +551,19 @@ class EigenMemoryKernel:
 
     def _contrast_sets(self, v_full):
         """Failures at extreme opposite projections along v_full, plus successes
-        matched to them by embedding similarity."""
-        proj = np.array([float(r["residual"] @ v_full) for r in self.fail_records])
+        matched to them by embedding similarity.
+
+        Project the vector the AXIS was derived from. `_reduced_residuals` keys
+        on "embedding" in embedding_mean mode and "residual" otherwise, so
+        projecting residuals unconditionally ordered failures by a quantity
+        largely unrelated to the axis whenever contrast_on="embedding_mean" --
+        the Rule-Shift configuration. Measured on the real seed windows: the two
+        orderings correlate 0.11-0.46, and on seeds 23 and 42 the residual
+        ordering returned six contrast examples ALL sharing one label, i.e. a
+        prompt asserting a contrast its own examples do not contain.
+        """
+        key = "embedding" if self.contrast_on == "embedding_mean" else "residual"
+        proj = np.array([float(r[key] @ v_full) for r in self.fail_records])
         order = np.argsort(proj)
         side_a = [self.fail_records[i] for i in order[:N_CONTRAST_PER_SIDE]]
         side_b = [self.fail_records[i] for i in order[::-1][:N_CONTRAST_PER_SIDE]]
