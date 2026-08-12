@@ -266,8 +266,11 @@ def _validate_axiom(axiom, recent, client, model, labels, window=VALIDATION_WIND
             )
             pred = _match_label(resp.choices[0].message.content, labels)
         except Exception as e:
+            # None accuracy = "could not score", distinct from a genuine 0.0.
+            # The write path rejects either way; the retirement path must NOT
+            # treat an unreachable model as evidence a rule went stale.
             print(f"[EIGEN] axiom validation call failed: {e}; rejecting")
-            return False, 0.0, baseline
+            return False, None, baseline
         if pred == r["actual"]:
             hits += 1
     acc = hits / len(tail)
@@ -320,6 +323,7 @@ class EigenMemoryKernel:
         n_permutations_seq=N_PERMUTATIONS_SEQ,
         e_process_alpha=E_PROCESS_ALPHA,
         validate_axioms=False,
+        retire_stale_axioms=False,
         labels=None,
     ):
         self.conn = db_conn
@@ -389,6 +393,14 @@ class EigenMemoryKernel:
         self.labels = labels
         self.recent_trials = []
         self.validation_history = []
+        # Re-validate stored axioms and retire the ones that stopped being true.
+        # Off by default alongside the rest of §9b/§9c.
+        self.retire_stale_axioms = retire_stale_axioms
+        self.retirement_history = []
+        # axiom text -> its consumed direction, so retiring a rule can release
+        # the axis. Without this the novelty gate would retire the wrong rule
+        # and then forbid the right one on the same structure.
+        self.axiom_directions = {}
         self.spectrum_history = []
 
     # ------------------------------------------------------------------ ingest
@@ -560,6 +572,88 @@ class EigenMemoryKernel:
                     break
         return side_a, side_b, successes
 
+    @staticmethod
+    def axiom_select_sql():
+        """The SELECT the agent uses to fetch injectable axioms.
+
+        Lives here so the retirement filter cannot drift away from the
+        retirement writer. Retired rows stay in the table as the record of what
+        the agent believed; they are excluded from injection, not deleted.
+        """
+        return ("SELECT axiom_content, eigen_vector FROM semantic_core "
+                "WHERE NOT COALESCE(retired, FALSE)")
+
+    def revalidate_axioms(self):
+        """Re-score stored axioms against recent trials; retire the stale ones.
+
+        Validation at write time cannot catch a rule that is true when written
+        and false later -- seed 42's "pending -> FILE" scored 0.80 vs 0.70
+        honestly at batch 7 for a shift that landed at batch 11. Asking the same
+        question again once the regime has moved is what catches it.
+
+        Failures do NOT retire. An unreachable model is not evidence a rule went
+        stale, and retiring on error would delete working memory on any blip.
+        This is the opposite of the write path, where rejecting on error is the
+        safe direction.
+        """
+        if not self.retire_stale_axioms:
+            return []
+        tail = self.recent_trials[-VALIDATION_WINDOW:]
+        if len(tail) < VALIDATION_MIN_ITEMS:
+            return []
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("SELECT id, axiom_content FROM semantic_core "
+                            "WHERE NOT COALESCE(retired, FALSE)")
+                rows = cur.fetchall()
+        except Exception as e:
+            print(f"[EIGEN] axiom re-validation SELECT failed: {e}")
+            return []
+
+        labels = self.labels or sorted(
+            {r["actual"] for r in self.recent_trials if r.get("actual")})
+        retired = []
+        for axiom_id, content in rows:
+            ok, acc, base = _validate_axiom(
+                content, self.recent_trials, self.client, self.model, labels,
+                extra_body=self.extra_body)
+            # acc is None when the rule could not be scored at all (model
+            # unreachable). Only retire when it actually answered and lost.
+            if ok or acc is None or acc >= base:
+                continue
+            try:
+                with self.conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE semantic_core SET retired = TRUE, "
+                        "retired_at = NOW() WHERE id = %s", (axiom_id,))
+                self.conn.commit()
+            except Exception as e:
+                print(f"[EIGEN] retiring axiom {axiom_id} failed: {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+                continue
+            retired.append(axiom_id)
+            # Release the axis so the CORRECTED rule for this same failure
+            # structure can crystallize: it lies along essentially the same
+            # direction, and the novelty gate would otherwise forbid it.
+            v = self.axiom_directions.pop(axiom_id, None)
+            if v is None:
+                v = self.axiom_directions.pop(content, None)
+            if v is not None:
+                v = np.asarray(v, dtype=float)
+                self.consumed_directions = [
+                    c for c in self.consumed_directions
+                    if abs(float(v @ c)) <= self.novelty_cos
+                ]
+            self.retirement_history.append(
+                {"axiom": content, "accuracy": acc, "baseline": base})
+            print(f"[EIGEN] axiom RETIRED ({acc:.2f} vs baseline {base:.2f}): "
+                  f"{content[:70]}")
+        return retired
+
     def _crystallize(self, v_full, strength=1.0):
         """Translate the detected axis into a linguistic rule via contrastive
         introspection, and store it with its (full-space) direction."""
@@ -657,6 +751,9 @@ class EigenMemoryKernel:
             return
 
         self.consumed_directions.append(v_full)
+        # Remember which axis this axiom claimed, so retiring it can release the
+        # axis for a corrected rule on the same failure structure.
+        self.axiom_directions[axiom] = v_full
         print(f"[AXIOM+] {axiom[:80].strip()}...")
 
     # ------------------------------------------------------------- inference use

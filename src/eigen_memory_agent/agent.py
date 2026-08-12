@@ -358,6 +358,10 @@ class AgenticMemoryLoop:
         # One consolidation check per batch: detectability + stability gated
         # (crystallizes only past the noise edge, never on a schedule).
         if self.enable_eigen_memory:
+            # Retire before crystallizing: a rule that just went stale should not
+            # be competing for injection alongside its replacement, and freeing
+            # its direction lets the new one crystallize on the same axis.
+            self.kernel.revalidate_axioms()
             self.kernel.check_and_crystallize()
 
         print(f"Batch Predictive Surprise (Avg NLL): {np.mean(predictive_surprises):.2f}")
@@ -403,7 +407,7 @@ class AgenticMemoryLoop:
             # (see THEORY.md section 4). Axiom counts are small, so scoring in
             # Python is fine.
             if self.enable_eigen_memory:
-                cur.execute("SELECT axiom_content, eigen_vector FROM semantic_core")
+                cur.execute(self.kernel.axiom_select_sql())
                 axioms = self.kernel.score_axioms(vec, cur.fetchall())[:AXIOM_INJECT_TOP_K]
 
                 if axioms:

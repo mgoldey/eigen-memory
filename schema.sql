@@ -24,7 +24,16 @@ CREATE TABLE IF NOT EXISTS semantic_core (
     eigen_vector vector(768),      -- The principal component direction
     strength_score FLOAT DEFAULT 1.0, -- Importance weight
     access_count INT DEFAULT 0,
-    last_accessed_at TIMESTAMP DEFAULT NOW()
+    last_accessed_at TIMESTAMP DEFAULT NOW(),
+    -- Retirement (docs/NEXT_EXPERIMENT.md §9c). An axiom can be true when
+    -- written and false later: on the Rule-Shift task one was crystallized at
+    -- batch 7 for a rule that changed at batch 11, and it validated honestly at
+    -- write time because it was still correct. Re-scoring stored axioms against
+    -- recent trials and setting this flag is how "correct when written" becomes
+    -- "correct now". Retired rows are kept, not deleted -- they are the record
+    -- of what the agent believed and when it stopped believing it.
+    retired BOOLEAN DEFAULT FALSE,
+    retired_at TIMESTAMP
 );
 
 -- High-performance indices
