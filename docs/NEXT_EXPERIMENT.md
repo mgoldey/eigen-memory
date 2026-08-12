@@ -541,7 +541,8 @@ more important finding is about the noise edge, not the split.**
 | 18 | 1.02 | **1.03** | 0.78 | 0.04107 | 0.03998 | 0.05232 | **1.31×** |
 | 23 | 1.46 | 0.95 | 0.82 | 0.04182 | 0.04392 | 0.05080 | 1.16× |
 
-**λ₁ is identical between the replay and the live run on every seed.** The replay reproduces
+**λ₁ agrees between the replay and the live run to ≤2×10⁻⁷ relative on every seed** — i.e.
+floating-point identical, not merely close. The replay reproduces
 exactly what the gate saw, so *every* live-vs-run ratio difference in this table is the
 permutation edge moving, not the signal. On seed 18 that alone flips the verdict: the same
 λ₁ = 0.04107 reads as detectable against the replay's edge (0.03998) and as below-edge against
@@ -562,8 +563,9 @@ Consequences for the §9a hypothesis test:
 
 **Revised conclusion.** The clean "featurization is the bottleneck" claim from the seed-23
 replay is *not* supported across four seeds. What the four seeds share is that every relevant
-quantity sits within a few percent of the decision boundary: λ₁/edge spans 0.78–1.28 across
-all runs and statistics, and the edge itself varies up to 1.31× on identical data. The gate is
+quantity sits within a few percent of the decision boundary: λ₁/edge on real labels spans
+0.78–1.28 across all four seeds, and the edge itself varies up to 1.31× on identical data
+(the proxy ratios run higher, to 1.46, which is the point of §9a). The gate is
 not obviously mis-featurized *or* mis-thresholded — it is operating with essentially no margin,
 so seed-level outcomes are decided by estimator variance rather than by the presence or absence
 of structure. That is a weaker and less tidy claim than §9a's first draft, and it is the one

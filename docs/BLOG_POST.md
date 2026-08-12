@@ -389,15 +389,41 @@ rather than better featurization. Which makes the next move a harness change rat
 modeling one: store per-trial correctness, then ask the featurization question with a split
 you can trust.
 
-So act three ends the way act two did: the headline number lost to the bar, and the
-autopsy is worth more than the number. Conditional on detection, compression beats
-copying by a wide, legible margin; detection at real-world SNR is the bottleneck — and
-the bottleneck turns out to be the *featurization*, not the threshold. What the residual
-stream carries on most seeds simply doesn't separate failure from success strongly enough
-to compress. The next levers are an ungated-trigger ablation (if a scheduled crystallizer
-extracts a correct rule from those same windows, the signal was there and the estimator
-missed it; if it writes garbage, the calibration called it right) and a residual
-representation that actually carries the contrast.
+That harness change got made, and the answer arrived in two stages — which is worth telling in
+order, because the first stage was wrong.
+
+**Stage one, one seed.** Seed 23, replayed with real per-trial labels over unchanged
+featurization: ratio 0.95, tracking the live run's 0.82 rather than the proxy's 1.46. Real
+labels did not rescue the gate. Conclusion: featurization is the bottleneck.
+
+**Stage two, the other three seeds.** It didn't hold. Across all four shut seeds, λ₁ came back
+*identical* between the replay and the live run — which means the replay reproduces exactly
+what the gate saw, and therefore every difference between those two ratios is the permutation
+**noise edge** moving, not the signal. On seed 18 that alone flips the verdict: the same
+λ₁ = 0.04107 is above one edge estimate (0.03998) and below the other (0.05232), a 31 %
+disagreement on identical data. And seed 7, whose original run never crossed the edge, reached
+**two of the three** consecutive detections needed — missing a fired gate only because the
+trial stream ran out of batches.
+
+So act three ends the way act two did: the headline number lost to the bar, and the autopsy is
+worth more than the number. Conditional on detection, compression beats copying by a wide,
+legible margin. Detection is the bottleneck — but the four-seed replay does not support the
+tidy story that the *featurization* is what's broken. λ₁/edge on real labels spans 0.78–1.28 across every seed, and the edge itself moves up to 1.31× on identical data. **The gate isn't
+obviously mis-featurized or mis-thresholded; it runs with no margin**, and which side of the
+line a seed lands on is decided by estimator variance as much as by structure.
+
+That reorders the work. Stabilizing the noise edge comes first — more permutation draws, or a
+pooled estimate across checks — because until a featurization change can be distinguished from
+a lucky draw, measuring one teaches you nothing. Then the more interesting move is to delete
+both knobs: the permutation quantile *and* the three-consecutive-detections rule are hand-tuned
+stand-ins for a sequential test with an actual error guarantee, which is what an
+anytime-valid/e-value formulation provides.
+
+The uncomfortable version, stated plainly: I twice drew a confident conclusion from one seed and
+had to walk it back. First the "signal-starved" calibration verdict, overturned by the ungated
+ablation. Then "featurization is the bottleneck," overturned by three more replays. The
+mechanism claim — detect, distill, retire, and beat copying — survived every one of those
+revisions. The claims about *why detection fails* did not.
 
 ## What this models in the wild
 

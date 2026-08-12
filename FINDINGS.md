@@ -320,10 +320,14 @@ version:
   the five-seed pre-registered endpoint missed — pooled Δ +0.078 vs a +0.10 bar, gate
   fired 1/5 seeds. The calibration read the shut seeds as signal-starved; the ungated
   ablation — run 2026-08-11 — overturned that on the signal-existence question: forced to
-  crystallize with no gate, all 4 shut seeds wrote rules correct on both polarities. The
-  signal was there and the live estimator missed it, with the caveat that the ablation's
-  reconstructed failure signal is cleaner than live. See README "Act three" and
-  docs/NEXT_EXPERIMENT.md §6–9.)*
+  crystallize with no gate, all 4 shut seeds wrote rules correct on both polarities, so the
+  signal was there. Replaying the gate on real per-trial correctness (2026-08-12, all four
+  shut seeds) then showed the reason is NOT simply a noisy failure signal, but also not
+  simply the featurization: λ₁ is identical between replay and live run on every seed, so
+  every ratio difference is the permutation noise edge, which moves up to 1.31× on identical
+  data and flips seed 18's verdict on its own. λ₁/edge on real labels spans 0.78–1.28 across all seeds — the gate runs with no margin, and seed outcomes turn on estimator variance.
+  Seed 7 reached 2 of the 3 required detections on rerun. See README "Act three" and
+  docs/NEXT_EXPERIMENT.md §6–9a.)*
 - **A 60-item executor pre-test** (**RFμ**: rule vs copy vs conflicting contexts) to check a
   model can apply a rule at all before burning a run — gemma3:4b already failed this, so
   candidates start at 12B.

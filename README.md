@@ -39,10 +39,12 @@ Experiments **3 and 4 were built to remove those excuses, and they are the real 
     co-occur: making a rule visible to the embeddings makes it visible to retrieval too, so
     copying never fell to chance in the first place. (Written **C1 ⇒ ¬C3** in the docs.)
 - **Rule-Shift (4)** broke copying with *time* instead of geometry, on a 12B model that *can*
-  apply a rule. It missed its pre-registered bar, and the autopsy is the finding: on the seeds
-  where the trigger never fired, the statistic it watches sits at noise level — nothing to
-  detect *in what it measures*, rather than a threshold set too high. The fix belongs in what
-  the trigger measures, not in where the bar sits.
+  apply a rule. It missed its pre-registered bar, and the autopsy is the finding: forced to
+  crystallize with no trigger, all four shut seeds wrote *correct* rules — so the signal was
+  there. Replaying the trigger on real per-trial correctness then showed why it still doesn't
+  fire, and it is not a tidy single cause: the trigger runs with **no margin**, and its own
+  noise threshold varies enough between estimates (up to 1.31× on identical data) to decide a
+  seed's outcome by itself.
   ([Details below](#act-three--rule-shift-breaking-copying-with-time-ran-verdict-miss-with-one-loud-exception).)
 
 Along the way: **five** bugs that silently corrupted the signal (two made "surprise" a
@@ -217,13 +219,17 @@ from noise alone — **no signal in what the trigger measures, rather than a bar
 Whether signal existed at all was settled by the ungated ablation (run 2026-08-11): forced to
 crystallize from those same windows, all four shut seeds wrote rules that map both polarities
 to the correct post-shift labels. **The signal was there; the live estimator did not surface
-it.** One caveat keeps that from being a clean indictment of the gate — the ablation rebuilds
-which trials failed using a proxy that is cleaner than live reality, so some of the gap is a
-better failure signal rather than better featurization. Conditional on
-detection, compression beats copying by a wide, auditable margin. Detecting that a rule has
-changed, at the signal levels a real workload offers, is the bottleneck — and the fix belongs
-in *what the trigger measures*, not in where the bar sits. Full ledger:
-[docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §5–8.
+it.** That ablation rebuilt which trials failed with a proxy cleaner than live reality, so the
+gate was then replayed on real per-trial correctness across all four shut seeds (2026-08-12).
+The result is less tidy than either earlier story: **λ₁ is identical between replay and live run
+on every seed**, so every ratio difference is the permutation *noise edge*, which varies up to
+1.31× on identical data and flips seed 18's verdict by itself. λ₁/edge on real labels spans 0.78–1.28 across all seeds, and seed 7 — whose original run never crossed the edge — reached two
+of the three required detections on rerun. Conditional on detection, compression beats copying
+by a wide, auditable margin. Detection is the bottleneck, but **the gate is not clearly
+mis-featurized or mis-thresholded — it runs with no margin**, so seed outcomes turn on
+estimator variance. The fix therefore starts with stabilizing the edge, then replacing the
+threshold-and-streak pair with a sequential test that has a real error guarantee. Full ledger:
+[docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §5–9a.
 
 ---
 
@@ -294,7 +300,7 @@ What its miss opens up, in order — full ledger in
   live run, so every ratio difference is the permutation **edge** moving, not the signal — and
   on seed 18 the same λ₁ lands on opposite sides of an edge that differs 31% on identical data.
   **The gate isn't clearly mis-featurized or mis-thresholded; it runs with no margin** (λ₁/edge
-  spans 0.78–1.28 across every seed and statistic), so seed outcomes turn on estimator variance.
+  on real labels spans 0.78–1.28 across all four seeds), so outcomes turn on estimator variance.
   Seed 7 reached streak 2-of-3 on rerun against a committed run that never crossed the edge.
   Details: [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §9a.
 - **Stabilize the noise edge** — now the immediate item, ahead of featurization work. More
