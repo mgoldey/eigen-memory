@@ -504,8 +504,37 @@ designed to separate the two candidate causes that §9 left entangled:
 | live ≈ replay < proxy | **featurization** — a clean split doesn't help; the embedding-mean contrast is the bottleneck |
 | live < replay ≈ proxy | **label noise** — the gate was starved by executor error polluting the fail/succ split |
 
-**Status: no data yet.** Every committed artifact predates the field, so `gate_replay.py`
-currently skips all five seeds by design rather than guessing. Answering the question requires
-rerunning at least one gate-shut seed's `Treatment_Eigen` arm (~1 h each on this hardware).
-Seed 23 is the most informative single seed — it showed the widest proxy-vs-live gap in §9
-(ablation ratio 1.46 against a live 0.75).
+**Result (seed 23, 2026-08-11): featurization, not label noise.** Seed 23's `Treatment_Eigen`
+arm was rerun to capture `trial_correct` (the four control arms were reused from the committed
+run via the driver's resume path — they don't feed a gate). Artifact:
+`results/shift/gate_replay.23.json`.
+
+| split | λ₁ | edge | ratio |
+|---|---|---|---|
+| proxy (stale-copier, as §9 used) | 0.0777 | 0.0531 | **1.46** |
+| **live (real per-trial labels)** | **0.0418** | **0.0439** | **0.95** |
+| live run's own last check | 0.0418 | 0.0508 | 0.82 |
+
+The live split tracks the live run, not the proxy — and λ₁ is *identical* (0.0418) between the
+replay and the run's own telemetry, confirming the replay reproduces what the gate actually
+saw. Handed real correctness labels over unchanged featurization, the statistic still sits
+below the noise edge.
+
+**So the label-noise hypothesis is retired.** The proxy's 1.46 came from the proxy being an
+easier problem: it splits 43 fail / 17 succ on a deterministic copying rule, where reality
+splits 32/28 with genuinely mixed failure causes. §9's rules were correct because the proxy
+hands cPCA a cleanly separable problem — not because executor noise was starving the live
+gate. The bottleneck is the embedding-mean contrast itself, which is where the next work
+belongs (§9's "featurization work follows", now the immediate item rather than a conditional).
+
+Scope: one seed. Seed 23 was picked as the sharpest test (widest proxy-vs-live gap in §9), so
+it is the most informative single seed, but confirming the other three shut seeds needs three
+more `Treatment_Eigen` reruns (~1 h each).
+
+Incidental: the rerun's `Treatment_Eigen` scored 0.544 against the committed 0.600. Both are
+shut-gate runs with `n_axioms=0`, so this is executor noise on the held-out set, not a
+mechanism difference. The committed artifact now carries 0.544; the original is preserved at
+`results/shift/comparison_results.shift.23.pre-trialcorrect.json`. Substituting it (together
+with seed 42's clean-extractor 0.922) moves the pooled five-seed Eigen mean to 0.649 and Δ to
++0.069, against 0.660 / +0.080 with seed 23's as-run 0.600 — still a miss against the +0.10
+bar. §8's table keeps the as-run numbers its pooled figures were computed from.

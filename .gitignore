@@ -7,3 +7,4 @@ __pycache__/
 shift_pilot_*.log
 shift_rerun_driver.log
 *.out
+shift_replay23_driver.log

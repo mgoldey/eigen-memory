@@ -286,16 +286,18 @@ What its miss opens up, in order — full ledger in
   rule mapping both polarities correctly. The signal was in the episodes and the estimator
   missed it. Artifacts: `results/shift/ungated_ablation.<seed>.json`; details in
   [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §9.
-- **Persist per-trial correctness** — *built 2026-08-11, awaiting data.* The ablation had to
-  reconstruct which trials failed (live correctness was never stored), using a proxy cleaner
-  than live reality. The harness now writes `trial_correct` per trial, and
-  [gate_replay.py](gate_replay.py) recomputes the gate statistic on the real split versus the
-  proxy over identical featurization — which separates "bad featurization" from "noisy failure
-  signal", the two causes the ablation left entangled. No artifact carries the field yet, so
-  this needs one gate-shut seed rerun (~1 h) before it answers anything. Seed 23 is the
-  sharpest test: proxy ratio 1.46 against a live 0.75.
-- **Residual featurization** — the estimator contrasts raw embedding means; the shut seeds
-  show that stream carries noise-level contrast on most vocabularies *as currently measured*.
+- ~~**Persist per-trial correctness**~~ — *done 2026-08-11, and it answered the question.* The
+  harness now writes `trial_correct`, and [gate_replay.py](gate_replay.py) recomputes the gate
+  statistic on the real split versus the ablation's proxy over identical featurization. On
+  seed 23 (the sharpest test) the real split gives ratio **0.95** — tracking the live run's
+  0.82, not the proxy's 1.46. **Real correctness labels do not rescue the gate, so the
+  bottleneck is the featurization, not a noisy failure signal.** The proxy scored high because
+  it is an easier problem (43/17 fail-succ on a deterministic copying rule, versus reality's
+  32/28 with mixed causes). One seed; the other three would need a rerun each.
+- **Residual featurization** — **now the immediate item**, promoted from conditional by the
+  replay above. The estimator contrasts raw embedding means, and the shut seeds carry
+  noise-level contrast in that stream even when handed a clean failure signal. This is where
+  the 1-of-5 fire rate actually lives.
 - **The label-noise wedge** — the third way to break copying (after geometry, which failed,
   and time, which split): exemplar-copying inherits annotator noise one-for-one at
   retrieval; a crystallized rule is a pooled majority-policy estimator, noise-free at
