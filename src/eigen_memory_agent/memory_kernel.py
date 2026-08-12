@@ -35,6 +35,19 @@ R_COMPONENTS = 50
 # Floors before the spectral machinery runs at all. Below these, even the
 # permutation edge is too noisy to trust.
 MIN_FAIL_RESIDUALS = 25
+# Eligibility floor when the SEQUENTIAL gate is on. The check already runs once
+# per batch, but a 60-trial window holding >=25 failures is only satisfiable at a
+# high failure rate: measured on the Rule-Shift seeds, the window+floor pair
+# allowed 2 checks on seeds 7 and 23 (49 and 59 failures) against 9 on seed 2
+# (79 failures) -- so low-failure seeds got structurally fewer chances to detect,
+# independent of whether their signal was real.
+#
+# Lowering it costs POWER, not VALIDITY: the permutation p-value is exact in
+# finite samples at any n, and the measured null fire rate over 12 checks stays
+# at or below 0.017 for n_fail down to 10 (test_type_i_holds_at_small_fail_counts).
+# 15 keeps a usable sample for a 40-component contrast while roughly doubling the
+# number of eligible checks on the starved seeds.
+MIN_FAIL_RESIDUALS_SEQ = 15
 MIN_SUCC_RESIDUALS = 10
 # Number of label-shuffles used to estimate the noise edge. The edge is the max
 # top-eigenvalue over shuffles: anything a random fail/success split can produce
@@ -364,8 +377,10 @@ class EigenMemoryKernel:
     def check_and_crystallize(self):
         """Run once per batch: eigenanalysis + the detectability/stability/novelty
         gates. Crystallizes at most one axiom per call."""
+        min_fail = (MIN_FAIL_RESIDUALS_SEQ if self.sequential_gate
+                    else self.min_fail_residuals)
         if (
-            len(self.fail_records) < self.min_fail_residuals
+            len(self.fail_records) < min_fail
             or len(self.succ_records) < self.min_succ_residuals
         ):
             return

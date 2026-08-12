@@ -56,16 +56,20 @@ def _run(client, trials, embs, correct, seed, sequential):
         if (i + 1) % BATCH == 0:
             before = conn.inserts
             n_e_before = len(kernel.evalue_history)
+            n_d_before = len(kernel.detectability_history)
             # Snapshot evidence BEFORE the call so a post-fire reset() does not
             # make the firing check look like it fired on E=1.
             e_before = kernel._eproc.log_e
             kernel.check_and_crystallize()
-            if sequential and len(kernel.evalue_history) > n_e_before:
-                e = kernel.evalue_history[-1]
-                log.append({"batch": (i + 1) // BATCH, "e": e,
-                            "E": float(np.exp(min(e_before + np.log(e), 700.0))),
-                            "fired": conn.inserts > before})
-            elif kernel.detectability_history:
+            if sequential:
+                # Only log when a check actually ran; the eligibility floor
+                # returns early on batches with too few failures in-window.
+                if len(kernel.evalue_history) > n_e_before:
+                    e = kernel.evalue_history[-1]
+                    log.append({"batch": (i + 1) // BATCH, "e": e,
+                                "E": float(np.exp(min(e_before + np.log(e), 700.0))),
+                                "fired": conn.inserts > before})
+            elif len(kernel.detectability_history) > n_d_before:
                 lam, edge = kernel.detectability_history[-1]
                 log.append({"batch": (i + 1) // BATCH, "lam1": lam, "edge": edge,
                             "ratio": lam / edge if edge else None,

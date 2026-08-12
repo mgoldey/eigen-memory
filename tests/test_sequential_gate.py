@@ -178,6 +178,39 @@ def test_eprocess_is_not_fooled_by_a_single_lucky_check():
     )
 
 
+@pytest.mark.slow
+def test_type_i_holds_at_small_fail_counts():
+    """Lowering the eligibility floor must cost power, not validity.
+
+    The 60-trial window plus MIN_FAIL_RESIDUALS=25 is only satisfiable at a high
+    failure rate. Measured on the Rule-Shift seeds, that pair allowed 2 eligible
+    checks on seeds 7 and 23 (49 and 59 failures) against 9 on seed 2 (79) — so
+    low-failure seeds got structurally fewer chances to detect, whatever their
+    signal. MIN_FAIL_RESIDUALS_SEQ=15 relaxes it for the sequential gate.
+
+    That is only defensible if Type-I control survives the smaller sample. It
+    does, because the permutation p-value is exact in finite samples at any n:
+    measured null fire rates over 12 checks were 0.000-0.017 for n_fail from 25
+    down to 10. This pins the floor actually shipped.
+    """
+    d = 40
+    n_fail = 15  # == MIN_FAIL_RESIDUALS_SEQ
+    fires = 0
+    trials = 40
+    for t in range(trials):
+        rng = np.random.default_rng(7000 + t)
+        proc = _EProcess(alpha=ALPHA)
+        for _ in range(12):
+            pooled = rng.standard_normal((n_fail + 20, d))
+            proc.update(_evalue_from_null(pooled[:n_fail], pooled[n_fail:],
+                                          n_perm=99, rng=rng))
+        fires += bool(proc.fired)
+    rate = fires / trials
+    assert rate <= 0.12, (
+        f"null fire rate {rate:.3f} at n_fail={n_fail} exceeds the {ALPHA} budget"
+    )
+
+
 def test_eprocess_resets_after_firing():
     """After crystallizing, evidence must restart or it fires forever."""
     proc = _EProcess(alpha=ALPHA)
