@@ -38,12 +38,15 @@ SEEDS = [int(a) for a in sys.argv[1:]] or [2, 7, 18, 23, 42]
 BATCH = 10
 
 
-def _run(client, trials, embs, correct, seed, sequential):
+def _run(client, trials, embs, correct, seed, sequential, validate=False):
     """Stream the trials through a kernel, checking once per batch as the live
     driver does. Returns (n_axioms, per-check log)."""
     conn = _NullConn()
     kernel = EigenMemoryKernel(conn, client, rng_seed=seed,
-                               sequential_gate=sequential, **KCFG)
+                               sequential_gate=sequential,
+                               validate_axioms=validate,
+                               labels=sorted({t["label"] for t in trials}),
+                               **KCFG)
     log = []
     for i, t in enumerate(trials):
         if i > 0:

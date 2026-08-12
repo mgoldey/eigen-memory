@@ -48,6 +48,13 @@ MIN_FAIL_RESIDUALS = 25
 # 15 keeps a usable sample for a 40-component contrast while roughly doubling the
 # number of eligible checks on the starved seeds.
 MIN_FAIL_RESIDUALS_SEQ = 15
+# Axiom validation (§9b): how many of the MOST RECENT trials a candidate axiom is
+# scored on, and the minimum needed to judge at all. One batch of 10 is the
+# natural unit -- long enough to separate a live rule from a superseded one,
+# short enough that it is genuinely "recent" on a stream where the rule can
+# change every 60 trials.
+VALIDATION_WINDOW = 10
+VALIDATION_MIN_ITEMS = 5
 MIN_SUCC_RESIDUALS = 10
 # Number of label-shuffles used to estimate the noise edge. The edge is the max
 # top-eigenvalue over shuffles: anything a random fail/success split can produce
@@ -203,6 +210,70 @@ class _EProcess:
         self.max_log_e = 0.0
 
 
+def _match_label(raw, labels):
+    """First label mentioned in the reply, else None. Local copy of agent.py's
+    cleaner: importing it here would be circular (agent imports this module)."""
+    up = (raw or "").upper()
+    hits = [(up.find(l.upper()), l) for l in labels if l.upper() in up]
+    return min(hits)[1] if hits else None
+
+
+def _validate_axiom(axiom, recent, client, model, labels, window=VALIDATION_WINDOW,
+                    min_items=VALIDATION_MIN_ITEMS, extra_body=None):
+    """Score a candidate axiom on the most RECENT trials before storing it.
+
+    Returns (accepted, axiom_accuracy, baseline_accuracy).
+
+    §9b: the crystallizer has no notion of when a rule stopped being true. The
+    sequential trigger fired at batch 7 for a shift landing at batch 11 and wrote
+    an accurate statement of the PRE-shift rule, false four batches later. A rule
+    describing a superseded regime fails on recent data by construction, so
+    scoring the tail is what separates "was correct" from "is correct".
+
+    The bar is the agent's own recent hit rate, not the true rule -- there is no
+    oracle at run time. An axiom costs context on every future call, so a tie
+    goes to the status quo.
+
+    Only the tail is scored: validating on the whole history would pass a rule
+    that was right for most of the run even after the regime changed.
+
+    Failures reject. Failing open would silently restore the unvalidated
+    behaviour this exists to prevent.
+    """
+    tail = recent[-window:]
+    if len(tail) < min_items:
+        return False, 0.0, 0.0
+
+    # Beat the agent's recent hit rate AND chance. On seed 7 an axiom passed at
+    # 0.30 against a 0.20 baseline on a 3-label task -- both at or below the 0.33
+    # chance line, so the margin was noise, not evidence. Requiring the candidate
+    # to clear chance as well stops a barely-better-than-nothing rule from earning
+    # a place in every future context.
+    chance = 1.0 / max(len(labels), 1)
+    baseline = max(sum(1 for r in tail if r["was_correct"]) / len(tail), chance)
+    hits = 0
+    for r in tail:
+        prompt = (
+            f"{axiom}\n\n"
+            f"Apply the rule above to this input. Answer with exactly one of "
+            f"{', '.join(labels)} and nothing else.\n\nInput: {r['input']}\nAnswer:"
+        )
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0, seed=0, max_tokens=8, extra_body=extra_body,
+            )
+            pred = _match_label(resp.choices[0].message.content, labels)
+        except Exception as e:
+            print(f"[EIGEN] axiom validation call failed: {e}; rejecting")
+            return False, 0.0, baseline
+        if pred == r["actual"]:
+            hits += 1
+    acc = hits / len(tail)
+    return acc > baseline, acc, baseline
+
+
 def crystallization_prompt(side_a, side_b, successes):
     """Task-neutral contrastive prompt. side_a/side_b: (input, predicted, actual)
     tuples from opposite extremes of the detected axis; successes: (input, actual)."""
@@ -248,6 +319,8 @@ class EigenMemoryKernel:
         sequential_gate=False,
         n_permutations_seq=N_PERMUTATIONS_SEQ,
         e_process_alpha=E_PROCESS_ALPHA,
+        validate_axioms=False,
+        labels=None,
     ):
         self.conn = db_conn
         self.client = openai_client
@@ -309,6 +382,13 @@ class EigenMemoryKernel:
         self.n_permutations_seq = n_permutations_seq
         self._eproc = _EProcess(alpha=e_process_alpha)
         self.evalue_history = []
+        # Validate a candidate axiom against recent trials before storing it.
+        # Off by default: it changes what gets written, so every committed
+        # result stays reproducible. See §9b.
+        self.validate_axioms = validate_axioms
+        self.labels = labels
+        self.recent_trials = []
+        self.validation_history = []
         self.spectrum_history = []
 
     # ------------------------------------------------------------------ ingest
@@ -333,6 +413,14 @@ class EigenMemoryKernel:
             "t": self._t,
         }
         (self.succ_records if was_correct else self.fail_records).append(rec)
+        # Chronological tail for axiom validation. fail/succ_records are split by
+        # outcome and window-pruned, so neither preserves recency across both
+        # classes -- which is exactly what validating against "recent trials"
+        # needs. Bounded to a few validation windows' worth.
+        self.recent_trials.append(
+            {"input": context_input, "actual": actual, "was_correct": was_correct})
+        if len(self.recent_trials) > 4 * VALIDATION_WINDOW:
+            self.recent_trials = self.recent_trials[-4 * VALIDATION_WINDOW:]
         if self.window:
             cutoff = self._t - self.window
             self.fail_records = [r for r in self.fail_records if r["t"] > cutoff]
@@ -532,6 +620,23 @@ class EigenMemoryKernel:
             print("[EIGEN] no clean RULE line after retry; axiom NOT stored")
             return
         axiom = f"RULE: {rule}"
+
+        if self.validate_axioms:
+            labels = self.labels or sorted(
+                {r["actual"] for r in self.recent_trials if r.get("actual")})
+            ok, acc, base = _validate_axiom(
+                axiom, self.recent_trials, self.client, self.model, labels,
+                extra_body=self.extra_body)
+            self.validation_history.append(
+                {"axiom": axiom, "accuracy": acc, "baseline": base, "accepted": ok})
+            print(f"[EIGEN] axiom validation: {acc:.2f} vs baseline {base:.2f} "
+                  f"-> {'ACCEPT' if ok else 'REJECT'}")
+            if not ok:
+                # Leave the axis UNCONSUMED: the direction may be real and simply
+                # early (§9b's batch-7 fire for a batch-11 shift). Rejecting the
+                # text without burning the direction lets a later check retry once
+                # the recent evidence has caught up.
+                return
 
         try:
             with self.conn.cursor() as cur:
