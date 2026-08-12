@@ -177,8 +177,13 @@ class AgenticMemoryLoop:
         self.retrieval_k = retrieval_k
         self.recency_rerank = recency_rerank
         self.axiom_replaces_exemplars = axiom_replaces_exemplars
+        # labels reaches the kernel so axiom validation can floor its accept bar
+        # at chance (§9b: a rule passed at 0.30 vs a 0.20 baseline on a 3-label
+        # task, both below the 0.33 chance line). An explicit kernel_kwargs
+        # value still wins.
+        _kkw = {"labels": self.labels, **(kernel_kwargs or {})}
         self.kernel = EigenMemoryKernel(self.conn, self.client, model=self.thought_model,
-                                        extra_body=extra_body, **(kernel_kwargs or {}))
+                                        extra_body=extra_body, **_kkw)
         # An episode is written when its predictive surprise clears chance-level
         # NLL for this label set (ln 3 ≈ 1.10 for three classes). The old fixed
         # 1.0 threshold sat BELOW chance, making the gate nearly write-everything.

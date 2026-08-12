@@ -54,7 +54,13 @@ from src.dataset import (N_SHIFT_PRE, get_labels, load_shift, shift_oracle_text,
 from src.eigen_memory_agent.agent import AgenticMemoryLoop, parse_prediction
 from src import paths
 
-SEED = int(sys.argv[1]) if len(sys.argv) > 1 else 42
+_ARGV = [a for a in sys.argv[1:] if not a.startswith("--")]
+SEED = int(_ARGV[0]) if _ARGV else 42
+# --v2 turns on the three §9b/§9c mechanisms together: the sequential (e-value)
+# trigger, axiom validation at write time, and re-validation/retirement of stored
+# axioms. Opt-in so the committed as-run results stay reproducible, and it writes
+# to a distinct artifact so the two configurations are never conflated.
+V2 = "--v2" in sys.argv
 BATCH = 10
 LABELS = get_labels("flip")
 EXECUTOR = "gemma4:12b"
@@ -62,6 +68,10 @@ EXTRA_BODY = {"reasoning_effort": "none"}
 RETRIEVAL_K = 5
 KERNEL_SHIFT_CFG = {"window": 60, "contrast_on": "embedding_mean",
                     "consecutive_detections": 3, "stability_cos": 0.5}
+if V2:
+    KERNEL_SHIFT_CFG = {**KERNEL_SHIFT_CFG, "sequential_gate": True,
+                        "validate_axioms": True, "retire_stale_axioms": True}
+ARTIFACT = f"comparison_results.shift{'.v2' if V2 else ''}.{SEED}.json"
 
 
 def reset_db(conn):
@@ -195,7 +205,7 @@ def main():
     # Crash resilience: each arm resets the DB and is independent, so results
     # are dumped after every arm and completed arms are skipped on relaunch
     # (the first pilot attempt died to a mid-run reboot with nothing on disk).
-    out_path = paths.shift(f"comparison_results.shift.{SEED}.json")
+    out_path = paths.shift(ARTIFACT)
     if os.path.exists(out_path):
         with open(out_path) as f:
             prev = json.load(f)
