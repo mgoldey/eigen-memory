@@ -425,6 +425,53 @@ ablation. Then "featurization is the bottleneck," overturned by three more repla
 mechanism claim — detect, distill, retire, and beat copying — survived every one of those
 revisions. The claims about *why detection fails* did not.
 
+### The rebuild: the bar cleared
+
+The third answer held. Detection was never a featurization problem or a threshold problem —
+it was the **wrong signal channel**. The gate watched a 768-dimensional contrast statistic
+that on real data sits at 0.78–1.28× a noise edge which itself varies 1.31× on identical
+inputs; recomputed from the committed telemetry, it fires on **0 of 5** seeds. Meanwhile the
+agent's own correctness stream carries the same event unmistakably — accuracy falls 0.12–0.26
+at the shift on every seed. A betting e-process on that stream, plus the observation that
+under a stable rule the label set is closed (so a never-before-seen label *is* the change),
+fires **5 of 5 at +1 to +6 trials, with no pre-shift false alarms**.
+
+Detection was the easy half. The rule the agent then wrote was still stale — correct on the
+class that didn't change, wrong on the class that did — and that turned out to be a window
+problem hiding in plain sight. The contrast is failures against successes, and pre-change
+*successes are successes under the old rule*. They pull the success mean toward the old
+regime, and the crystallizer dutifully writes the old regime back out. Dropping every
+pre-change record at the moment of detection roughly **doubled** the contrast signal on
+identical data, and the rule came out right.
+
+Two more safeguards earned their place by failing first. A half-stale axiom left live scored
+**0.500** held-out — *worse* than injecting nothing (0.556), with the changed class at 0.077.
+Validating candidates against recent trials and retiring them when they stop earning caught
+it, but only after the accept bar was fixed twice: once for margin (beating a baseline by one
+item out of ten is noise), and once because comparing a candidate to *the agent's own rate on
+the changed class* puts the bar on the floor — the agent has already collapsed there.
+
+Five seeds, same pre-registered bar:
+
+| | pooled | vs kill arm |
+|---|---|---|
+| as pre-registered | 0.658 | +0.078 — **miss** |
+| rebuilt | **0.822** | **+0.242 — met** |
+
+Fired on 3 of 5 seeds; every rule it wrote was correct on both branches; accuracy on the
+class the shift redefines was **1.000 on every seed that fired**. One of those seeds scored
+0.978 against an oracle of 0.900 — the self-written rule beat pasting the true rule in.
+
+The two seeds that didn't fire wrote *nothing* rather than something wrong, and both ran out
+of post-shift stream rather than misjudging. That is a rig length constraint, and it is the
+next thing to fix.
+
+What I'd keep from all of this: the mechanism claim survived every revision, and every claim
+about *why it wasn't working* had to be replaced. Twice I was confident and wrong about the
+diagnosis while the thing itself was fine. The instrument that eventually worked was not a
+better statistic — it was noticing the agent already knew it was failing, and reading that
+instead.
+
 ## What this models in the wild
 
 The structure being simulated — *repeated decisions with after-the-fact feedback, a policy

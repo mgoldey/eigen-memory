@@ -396,6 +396,12 @@ pre-registered +0.10 bar. Endpoint NOT met**, despite the direction being real (
 89-vs-54 discordant, one-sided p = 2.2e-3) and Eigen > Control_RAG (0.658 vs 0.589)
 holding. Verdict: **miss**; the +0.10 effect-size bar does the work the p-value can't.
 
+> *(This is the as-run v1 verdict and stays as the record of what the pre-registered
+> mechanism produced. §10 reports a rebuilt pipeline — outcome-stream detection,
+> change-point truncation, validation and retirement — that clears the same bar at
+> **+0.242** on the same five seeds. The miss below is real and was not retroactively
+> rewritten; the v4 result is a different mechanism measured against the same bar.)*
+
 Mechanistic accounting, stated precisely: on **3 of the 4** gate-shut seeds (2, 18, 7),
 Treatment's 90 held-out predictions are IDENTICAL to Control_RAG's, verified item-level —
 no axiom, no effect, no hidden channel. Seed 23 is the exception and is worth recording
@@ -651,3 +657,89 @@ mechanism difference. The committed artifact now carries 0.544; the original is 
 with seed 42's clean-extractor 0.922) moves the pooled five-seed Eigen mean to 0.649 and Δ to
 +0.069, against 0.660 / +0.080 with seed 23's as-run 0.600 — still a miss against the +0.10
 bar. §8's table keeps the as-run numbers its pooled figures were computed from.
+
+---
+
+## 10. Rebuilt pipeline, five seeds (2026-08-13): endpoint MET at +0.242
+
+§8 missed at +0.078 with the trigger firing on 1 of 5 seeds — and on rerun that one seed
+did not fire again (§9a), so the honest v1 summary is closer to "fired once, not
+reproducibly". §9–§9c traced that to four separate defects. Fixing them changes the
+verdict.
+
+| seed | v4 | v1 | Δ | axiom | request | report | kill arm | oracle |
+|---|---|---|---|---|---|---|---|---|
+| 2 | 0.956 | 0.656 | **+0.300** | ✓ | **1.000** | 0.915 | 0.544 | 0.989 |
+| 7 | 0.567 | 0.567 | −0.000 | — | 0.353 | 0.846 | 0.656 | 0.956 |
+| 18 | **0.978** | 0.533 | **+0.445** | ✓ | **1.000** | 0.957 | 0.567 | 0.900 |
+| 23 | 0.644 | 0.544 | +0.100 | — | 0.480 | 0.850 | 0.611 | 0.867 |
+| 42 | 0.967 | 0.556 | +0.411 | ✓ | **1.000** | 0.941 | 0.522 | 0.978 |
+
+**Pooled: Eigen 0.822 vs Recency_RAG 0.580 — Δ = +0.242 against the +0.10 bar. Endpoint
+MET.** Fired on 3 of 5 seeds; every axiom it wrote was correct on both polarities.
+
+### What changed, and why each mattered
+
+**Detection moved off the spectral statistic.** The contrast λ₁/edge sits at 0.78–1.28 on
+real labels while the permutation edge itself varies 1.31× on identical data, so seed-level
+outcomes were decided by estimator variance (§9a). Recomputed from the committed telemetry,
+the streak rule fires **0 of 5**. The outcome stream carries the same event far more
+cleanly — accuracy drops 0.12–0.26 at the shift on every seed — and a betting e-process
+plus an unseen-label check fires **5 of 5 at +1 to +6 trials**, zero pre-shift.
+
+**Change-point truncation was the difference between a correct rule and a stale one.**
+Pre-change *successes* are successes under the OLD rule; leaving them in the contrast pulls
+the success mean toward the old regime, which is exactly what let the crystallizer write
+the pre-shift rule back out. On seed 42, same data and same statistic:
+
+| run | window when crystallizing | λ₁ | rule |
+|---|---|---|---|
+| v3 | 40 pre / 20 post | 0.042 | stale (`request → FILE`) |
+| v3b | 40 pre / 20 post | 0.042 | stale (`request → FILE`) |
+| v4 | 0 pre / 50 post | 0.080–0.110 | correct, both branches |
+
+This **inverts** the offline finding in `2813fe6`, which had `full` and `truncated` tied at
+5/5 and nearly retired the idea. That test crystallized at *end of stream*, where the buffer
+is already all post-shift and truncation has nothing to remove. Mid-stream — where a
+deployment lives — it is the whole difference.
+
+**Validation and retirement are the safety net, and both earned their place.** v3 stored a
+half-stale axiom and scored 0.500, *worse* than injecting nothing (0.556), with `request` at
+0.077. v3b wrote the same class of rule and retired it a batch later, scoring 0.611. The
+accept bar needed two corrections found the same way: a margin scaled to the tail size
+(0.40-vs-0.33 on ten items is one item of noise), and a per-class bar floored at **chance**
+rather than at the agent's own rate — on the class whose rule just changed the agent has
+already collapsed to 0.00, so comparing only to the agent puts the bar on the floor exactly
+where it matters.
+
+### The two misses are stream length, not misjudgement
+
+Neither seed wrote a stale rule. Both wrote **nothing** and scored at or above their
+no-axiom baselines.
+
+- **Seed 7** — 49 failures in 160 trials, the lowest of any seed. After truncation it never
+  refilled to 25 failures plus 40 post-change trials before the stream ended.
+- **Seed 23** — reached readiness at batch 15 with λ₁ = 0.044, but the direction was
+  `unstable` and the stream ended before a confirming check.
+
+Both are the 60-trial post-shift stretch expiring against a 60-trial window. A longer
+post-change stretch is the obvious next rig change, and it is a rig fix rather than a
+mechanism one.
+
+### Scope and honest caveats
+
+- v4's parameters (truncation, readiness 40) were chosen while watching **seed 42** fail in
+  v3 and v3b. Seed 42 is therefore selection-affected. Seeds 2, 7, 18 and 23 are clean
+  tests, and the pooled figure includes all five.
+- **Seed 18 is the load-bearing generalization evidence**: its rule mapping is *inverted*
+  relative to seeds 2 and 42 (completed → DEFER, not ESCALATE), so the crystallizer is not
+  reproducing a memorized rule shape. It scored 0.978 against its own oracle of 0.900 — the
+  self-written axiom beat pasting the true rule in prose.
+- `request` accuracy is **1.000 on every seed that fired** — the class the shift redefines,
+  and the class that collapsed to 0.077 in v3 when a stale axiom went live.
+- One configuration, five seeds, one task. Nothing here shows the mechanism transfers to a
+  shift that *permutes* existing labels rather than introducing a new one — the unseen-label
+  signal carries most of the detection on this task and would not exist there.
+
+Artifacts: `results/shift/comparison_results.shift.v4.<seed>.json` ×5,
+`results/shift/outcome_detection.json`. Config: `run_shift_experiment.py --v4`.

@@ -15,14 +15,24 @@ examples — because that is what you would actually build instead.
 
 Four controlled experiments ask where the rules beat the retrieval.
 
-**They never do — and the instrumented reasons why are the deliverable.**
+**On static tasks they never do. When the rule changes mid-run they do — but only after
+the detector was rebuilt around the right signal, and the instrumented path from a missed
+endpoint to a met one is the deliverable.**
+
+The short version: as pre-registered, Rule-Shift **missed** (+0.078 against a +0.10 bar,
+trigger firing on 1 of 5 seeds — and on rerun, that one seed didn't fire again). Four
+distinct defects were found and fixed, the largest being that detection was watching a
+768-dimensional contrast statistic operating with no margin while the agent's own
+**correctness stream** carried the same event at far higher signal. Rebuilt, the same five
+seeds give **+0.242** — endpoint met, every crystallized rule correct on both branches, and
+perfect accuracy on the class the shift redefines.
 
 | # | Experiment | Verdict | Why |
 |---|------------|---------|-----|
 | 1 | **Number-game** — classify integers by a hidden arithmetic rule | tie | The embeddings can't see the rule: text embeddings don't encode primality, so *no* memory can work. |
 | 2 | **TREC** — question-type classification | RAG wins (0.80 vs 0.75) | The rig detects real memory benefits — but one retrieved example settles each question, so rules have nothing to add. |
 | 3 | **Label-flip** — purpose-built, 4 seeds, held-out | tie (0.617 vs 0.600) | The trigger stayed shut on 3 of 4 seeds, where predictions were *item-identical* to RAG's; the whole gap is one seed's single wrong-mapping axiom. Two structural reasons, both below. |
-| 4 | **Rule-Shift** — the rule flips mid-run, 12B model, 5 seeds | **miss** — +0.078 against a +0.10 bar set in advance | The trigger fired on only 1 of 5 seeds. But on that seed, the rule the agent wrote beat copying **0.922 vs 0.522**. |
+| 4 | **Rule-Shift** — the rule flips mid-run, 12B model, 5 seeds | **miss as pre-registered** (+0.078 vs a +0.10 bar), then **met after a rebuild** (+0.242) | The original trigger fired on 1 of 5 seeds — and not reproducibly. Rebuilding it around the right signal took that to 3 of 5, every rule correct, **+0.242** against the same bar. |
 
 The first two experiments fail for reasons that have nothing to do with rule-compression: one
 picked a rule the embeddings can't represent, the other a task a single example already solves.
@@ -45,7 +55,19 @@ Experiments **3 and 4 were built to remove those excuses, and they are the real 
   fire, and it is not a tidy single cause: the trigger runs with **no margin**, and its own
   noise threshold varies enough between estimates (up to 1.31× on identical data) to decide a
   seed's outcome by itself.
-  ([Details below](#act-three--rule-shift-breaking-copying-with-time-ran-verdict-miss-with-one-loud-exception).)
+
+  **Rebuilt on that diagnosis, the endpoint is met.** Detection moved to the agent's own
+  correctness stream (5/5 seeds, +1 to +6 trials after the shift, zero false fires, against
+  0/5 for the original trigger recomputed on the same telemetry). Pre-change records are
+  dropped from the contrast the moment a change is detected — they are successes under the
+  *old* rule, and leaving them in is what let the crystallizer write the stale rule back out;
+  removing them roughly doubled the contrast signal. Candidate rules are then scored against
+  recent trials before being stored, and retired if they later stop earning their place.
+  Five seeds, same bar: **pooled +0.242**, fired on 3 of 5, every rule correct on both
+  branches, `request` accuracy 1.000 wherever it fired. The two non-firing seeds wrote
+  *nothing* rather than something wrong — both ran out of post-shift stream.
+  ([Details below](#act-three--rule-shift-breaking-copying-with-time-ran-verdict-miss-with-one-loud-exception),
+  full ledger in [§10](docs/NEXT_EXPERIMENT.md).)
 
 Along the way: **five** bugs that silently corrupted the signal (two made "surprise" a
 constant, one flattened it for 2 of 3 classes, and two injected the model's raw

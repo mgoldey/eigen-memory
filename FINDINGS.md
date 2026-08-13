@@ -318,6 +318,12 @@ version:
   *(Ran 2026-07-22/26: pilot seed fired end-to-end and scored 0.911 vs 0.522 for the kill
   arm — rerun 2026-08-11 on a fixed rule extractor, 0.922, axiom clean of chain-of-thought;
   the five-seed pre-registered endpoint missed — pooled Δ +0.078 vs a +0.10 bar, gate
+  fired 1/5 seeds and did not reproduce on rerun. **Rebuilt and re-run 2026-08-13: endpoint
+  MET at +0.242** (0.822 vs 0.580), firing on 3/5 with every rule correct on both branches
+  and request accuracy 1.000 wherever it fired — after moving detection off the spectral
+  statistic onto the correctness stream and truncating the contrast window at the detected
+  change point. See docs/NEXT_EXPERIMENT.md §10. Original v1 numbers below are the as-run
+  record and are not retroactively rewritten. Prior context: gate
   fired 1/5 seeds. The calibration read the shut seeds as signal-starved; the ungated
   ablation — run 2026-08-11 — overturned that on the signal-existence question: forced to
   crystallize with no gate, all 4 shut seeds wrote rules correct on both polarities, so the
