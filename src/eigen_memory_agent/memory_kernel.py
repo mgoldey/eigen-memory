@@ -55,6 +55,13 @@ MIN_FAIL_RESIDUALS_SEQ = 15
 # change every 60 trials.
 VALIDATION_WINDOW = 10
 VALIDATION_MIN_ITEMS = 5
+# Outcome trigger (§9d). Trials used to establish the pre-change hit rate before
+# the detector is allowed to fire, and the betting fraction of the e-process.
+# Measured offline on all five Rule-Shift streams: 5/5 detection, 0 pre-shift
+# false fires, median delay 1 trial -- against 0/5 for the spectral streak rule
+# on the same data.
+OUTCOME_BURN_IN = 30
+OUTCOME_BET = 0.5
 MIN_SUCC_RESIDUALS = 10
 # Number of label-shuffles used to estimate the noise edge. The edge is the max
 # top-eigenvalue over shuffles: anything a random fail/success split can produce
@@ -324,6 +331,7 @@ class EigenMemoryKernel:
         e_process_alpha=E_PROCESS_ALPHA,
         validate_axioms=False,
         retire_stale_axioms=False,
+        outcome_trigger=False,
         labels=None,
     ):
         self.conn = db_conn
@@ -397,6 +405,16 @@ class EigenMemoryKernel:
         # Off by default alongside the rest of §9b/§9c.
         self.retire_stale_axioms = retire_stale_axioms
         self.retirement_history = []
+        # Outcome-stream change trigger (§9d), off by default.
+        self.outcome_trigger = outcome_trigger
+        self.outcome_change_detected = False
+        self.outcome_change_at = None
+        self.outcome_change_reason = None
+        self._outcome_n = 0
+        self._outcome_hits = 0
+        self._outcome_seen_labels = set()
+        self._outcome_logw = 0.0
+        self._outcome_consumed = False
         # axiom text -> its consumed direction, so retiring a rule can release
         # the axis. Without this the novelty gate would retire the wrong rule
         # and then forbid the right one on the same structure.
@@ -431,6 +449,8 @@ class EigenMemoryKernel:
         # needs. Bounded to a few validation windows' worth.
         self.recent_trials.append(
             {"input": context_input, "actual": actual, "was_correct": was_correct})
+        if self.outcome_trigger:
+            self._update_outcome_trigger(was_correct, actual)
         if len(self.recent_trials) > 4 * VALIDATION_WINDOW:
             self.recent_trials = self.recent_trials[-4 * VALIDATION_WINDOW:]
         if self.window:
@@ -509,7 +529,21 @@ class EigenMemoryKernel:
         )
         self.prev_direction = v_full
 
-        if self.sequential_gate:
+        if self.outcome_trigger:
+            # Detection comes from the outcome stream; the spectral axis is
+            # demoted to what it is actually good at -- picking the contrast
+            # examples for the prompt. Crystallize once per detected change,
+            # with stability/novelty still applying so a noise axis is not used.
+            triggered = (self.outcome_change_detected
+                         and not self._outcome_consumed)
+            print(f"[EIGEN-OUT] lam1={lam1:.3f} "
+                  f"change={'YES@' + str(self.outcome_change_at) if self.outcome_change_detected else 'no'} "
+                  f"({'FIRE' if triggered else 'hold'}, "
+                  f"{'stable' if stable else 'unstable'}, "
+                  f"{'novel' if novel else 'consumed'}) "
+                  f"fail={len(self.fail_records)} succ={len(self.succ_records)}")
+            strength = lam1 / edge if edge > 0 else 1.0
+        elif self.sequential_gate:
             # Accumulate evidence instead of re-testing from scratch. See
             # _EProcess / _evalue_from_null for why this replaces both the
             # permutation-quantile threshold and the consecutive-detection count.
@@ -546,6 +580,11 @@ class EigenMemoryKernel:
                 # Evidence for THIS direction is spent; a further axiom must earn
                 # its own. Without this the latched process fires every check.
                 self._eproc.reset()
+            if self.outcome_trigger:
+                # One crystallization per detected change. The trigger latches
+                # (the rule really did change), so without this it would fire on
+                # every subsequent check. A LATER change re-arms it below.
+                self._outcome_consumed = True
 
     # ----------------------------------------------------------- crystallization
 
@@ -582,6 +621,76 @@ class EigenMemoryKernel:
                 if len(successes) >= N_MATCHED_SUCCESSES:
                     break
         return side_a, side_b, successes
+
+    def _update_outcome_trigger(self, was_correct, actual):
+        """Detect the rule change from outcomes rather than embedding geometry.
+
+        The spectral statistic on these streams sits at 0.78-1.28x a threshold
+        that itself varies 1.31x on identical data, and fires 0/5. The outcome
+        stream carries the same event at far higher SNR: accuracy drops
+        0.12-0.26 on every seed at the shift.
+
+        Two signals, both checkable every trial:
+
+          - an unseen label. Under a stable rule the label set is closed, so a
+            label that never occurred before IS the change. On this task the
+            shift introduces exactly that, which is where most of the detection
+            power comes from -- a shift PERMUTING existing labels would not
+            produce it and would fall back to the e-process below.
+          - a betting e-process against "the hit rate is still p0", with p0 the
+            burn-in rate. Ville bounds the all-time false-fire probability, so
+            checking every trial costs nothing.
+
+        Latches: once the rule has changed it has changed, and the agent
+        adapting afterwards must not un-fire it.
+        """
+        self._outcome_n += 1
+        if self._outcome_n <= OUTCOME_BURN_IN:
+            self._outcome_seen_labels.add(actual)
+            self._outcome_hits += bool(was_correct)
+            return
+        if self.outcome_change_detected:
+            # Already fired and already crystallized: re-arm so a SECOND change
+            # later in the stream can be detected too. The label set is
+            # refreshed to the post-change regime, and the e-process restarts.
+            if self._outcome_consumed:
+                self._outcome_seen_labels.add(actual)
+                self.outcome_change_detected = False
+                self._outcome_consumed = False
+                self._outcome_logw = 0.0
+            return
+
+        if actual not in self._outcome_seen_labels:
+            self.outcome_change_detected = True
+            self.outcome_change_at = self._outcome_n
+            self.outcome_change_reason = f"unseen label {actual!r}"
+            print(f"[OUTCOME] change detected at trial {self._outcome_n}: "
+                  f"{self.outcome_change_reason}")
+            return
+
+        # Bet a fraction OUTCOME_BET of capital that the failure rate has RISEN.
+        # Payoff (1 + b) on a failure, (1 - b * q0/p0) on a success, which has
+        # mean exactly 1 under the null -- a valid e-value, so Ville bounds the
+        # all-time false-fire probability by alpha.
+        #
+        # An earlier form multiplied the whole bet by q0, which silently zeroed
+        # the update when the burn-in was perfect (p0 = 1 -> q0 = 0 -> factor
+        # identically 1.0). The detector then could not fire on a total accuracy
+        # collapse -- the case it exists for. Clamp p0 instead so a perfect
+        # burn-in leaves a usable null.
+        p0 = min(max(self._outcome_hits / OUTCOME_BURN_IN, 1e-3), 0.99)
+        q0 = 1.0 - p0
+        factor = (1.0 + OUTCOME_BET) if not was_correct else (
+            1.0 - OUTCOME_BET * q0 / p0)
+        self._outcome_logw = max(
+            self._outcome_logw + float(np.log(max(factor, 1e-12))), 0.0)
+        if self._outcome_logw >= np.log(1.0 / E_PROCESS_ALPHA):
+            self.outcome_change_detected = True
+            self.outcome_change_at = self._outcome_n
+            self.outcome_change_reason = (
+                f"accuracy decay (baseline {p0:.2f})")
+            print(f"[OUTCOME] change detected at trial {self._outcome_n}: "
+                  f"{self.outcome_change_reason}")
 
     @staticmethod
     def axiom_select_sql():
