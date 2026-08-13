@@ -55,6 +55,9 @@ MIN_FAIL_RESIDUALS_SEQ = 15
 # change every 60 trials.
 VALIDATION_WINDOW = 10
 VALIDATION_MIN_ITEMS = 5
+# Minimum examples of a class before its per-class score can veto a candidate.
+# Below this a single unlucky item in a rare class would block every rule.
+VALIDATION_MIN_CLASS_ITEMS = 3
 # Outcome trigger (§9d). Trials used to establish the pre-change hit rate before
 # the detector is allowed to fire, and the betting fraction of the e-process.
 # Measured offline on all five Rule-Shift streams: 5/5 detection, 0 pre-shift
@@ -62,6 +65,14 @@ VALIDATION_MIN_ITEMS = 5
 # on the same data.
 OUTCOME_BURN_IN = 30
 OUTCOME_BET = 0.5
+# Post-change trials required before a rule may be WRITTEN. Detection stays
+# immediate; only formation waits. v3 fired at the shift and crystallized two
+# batches later from a 60-trial window still mostly pre-shift, producing a rule
+# whose changed-class branch was the pre-shift label -- and scoring 0.077 on
+# that class against 0.359 for injecting nothing. 20 is a third of the window:
+# enough for the contrast to be dominated by post-change evidence without
+# waiting so long that a short stream never qualifies.
+FORMATION_MIN_POST_CHANGE = 20
 MIN_SUCC_RESIDUALS = 10
 # Number of label-shuffles used to estimate the noise edge. The edge is the max
 # top-eigenvalue over shuffles: anything a random fail/success split can produce
@@ -258,7 +269,14 @@ def _validate_axiom(axiom, recent, client, model, labels, window=VALIDATION_WIND
     # a place in every future context.
     chance = 1.0 / max(len(labels), 1)
     baseline = max(sum(1 for r in tail if r["was_correct"]) / len(tail), chance)
+    # Margin that scales with the evidence. v3 accepted 0.40 against a 0.33
+    # baseline on a ten-item tail -- a one-item difference -- and the resulting
+    # axiom scored 0.500 held-out, WORSE than injecting nothing (0.556). One
+    # standard error of a proportion at this n is the natural floor; below it,
+    # "better" is indistinguishable from noise.
+    margin = float(np.sqrt(max(baseline * (1.0 - baseline), 0.01) / len(tail)))
     hits = 0
+    preds = []
     for r in tail:
         prompt = (
             f"{axiom}\n\n"
@@ -278,10 +296,34 @@ def _validate_axiom(axiom, recent, client, model, labels, window=VALIDATION_WIND
             # treat an unreachable model as evidence a rule went stale.
             print(f"[EIGEN] axiom validation call failed: {e}; rejecting")
             return False, None, baseline
+        preds.append(pred)
         if pred == r["actual"]:
             hits += 1
     acc = hits / len(tail)
-    return acc > baseline, acc, baseline
+
+    # Per-class check. v3's axiom was right on `report` (0.824 held-out) and
+    # catastrophically wrong on `request` (0.077, against 0.359 for injecting
+    # NOTHING). Those average to something unremarkable, so aggregate scoring
+    # cannot see it -- a half-stale rule destroys the class whose rule changed
+    # while the intact branch carries the mean. Reject if the candidate is
+    # materially worse than the agent's own recent rate on ANY class with enough
+    # examples to judge; a class with one or two items cannot support the call
+    # and must not veto an otherwise strong rule.
+    by_class = {}
+    for r, pred in zip(tail, preds):
+        c = by_class.setdefault(r["actual"], [0, 0, 0])
+        c[0] += 1
+        c[1] += (pred == r["actual"])
+        c[2] += bool(r["was_correct"])
+    for lab, (n_c, rule_hits, agent_hits) in by_class.items():
+        if n_c < VALIDATION_MIN_CLASS_ITEMS:
+            continue
+        if (rule_hits / n_c) + 1e-9 < (agent_hits / n_c):
+            print(f"[EIGEN] axiom rejected on class {lab!r}: "
+                  f"{rule_hits / n_c:.2f} vs agent {agent_hits / n_c:.2f}")
+            return False, acc, baseline
+
+    return acc > baseline + margin, acc, baseline
 
 
 def crystallization_prompt(side_a, side_b, successes):
@@ -332,6 +374,7 @@ class EigenMemoryKernel:
         validate_axioms=False,
         retire_stale_axioms=False,
         outcome_trigger=False,
+        formation_min_post_change=FORMATION_MIN_POST_CHANGE,
         labels=None,
     ):
         self.conn = db_conn
@@ -415,6 +458,12 @@ class EigenMemoryKernel:
         self._outcome_seen_labels = set()
         self._outcome_logw = 0.0
         self._outcome_consumed = False
+        # Formation readiness: detection is immediate, rule WRITING waits for
+        # enough post-change evidence. v3 crystallized two batches after the
+        # trigger, against a window still dominated by pre-shift trials, and
+        # wrote the pre-shift rule.
+        self.formation_min_post_change = formation_min_post_change
+        self._post_change_observed = 0
         # axiom text -> its consumed direction, so retiring a rule can release
         # the axis. Without this the novelty gate would retire the wrong rule
         # and then forbid the right one on the same structure.
@@ -450,7 +499,14 @@ class EigenMemoryKernel:
         self.recent_trials.append(
             {"input": context_input, "actual": actual, "was_correct": was_correct})
         if self.outcome_trigger:
+            was_detected = self.outcome_change_detected
             self._update_outcome_trigger(was_correct, actual)
+            if was_detected and self.outcome_change_detected:
+                # Count trials observed SINCE the change, which is what decides
+                # whether the contrast window carries post-change evidence.
+                self._post_change_observed += 1
+            elif self.outcome_change_detected and not was_detected:
+                self._post_change_observed = 1
         if len(self.recent_trials) > 4 * VALIDATION_WINDOW:
             self.recent_trials = self.recent_trials[-4 * VALIDATION_WINDOW:]
         if self.window:
@@ -535,7 +591,8 @@ class EigenMemoryKernel:
             # examples for the prompt. Crystallize once per detected change,
             # with stability/novelty still applying so a noise axis is not used.
             triggered = (self.outcome_change_detected
-                         and not self._outcome_consumed)
+                         and not self._outcome_consumed
+                         and self.formation_ready)
             print(f"[EIGEN-OUT] lam1={lam1:.3f} "
                   f"change={'YES@' + str(self.outcome_change_at) if self.outcome_change_detected else 'no'} "
                   f"({'FIRE' if triggered else 'hold'}, "
@@ -621,6 +678,20 @@ class EigenMemoryKernel:
                 if len(successes) >= N_MATCHED_SUCCESSES:
                     break
         return side_a, side_b, successes
+
+    @property
+    def formation_ready(self):
+        """Whether enough post-change evidence exists to WRITE a rule.
+
+        Always True when the outcome trigger is off: the streak-rule and
+        sequential paths have no change point, so there is nothing to wait for
+        and their behaviour must be unchanged.
+        """
+        if not self.outcome_trigger:
+            return True
+        if not self.outcome_change_detected:
+            return False
+        return self._post_change_observed >= self.formation_min_post_change
 
     def _update_outcome_trigger(self, was_correct, actual):
         """Detect the rule change from outcomes rather than embedding geometry.
