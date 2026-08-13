@@ -71,7 +71,16 @@ KERNEL_SHIFT_CFG = {"window": 60, "contrast_on": "embedding_mean",
 if V2:
     KERNEL_SHIFT_CFG = {**KERNEL_SHIFT_CFG, "sequential_gate": True,
                         "validate_axioms": True, "retire_stale_axioms": True}
-ARTIFACT = f"comparison_results.shift{'.v2' if V2 else ''}.{SEED}.json"
+# --v3 is the assembled pipeline: detect on the OUTCOME stream (5/5 offline vs
+# 0/5 for the streak rule on the same telemetry), form on the spectral axis with
+# the corrected contrast-set projection, validate the candidate against recent
+# trials, and retire it if it later goes stale.
+V3 = "--v3" in sys.argv
+if V3:
+    KERNEL_SHIFT_CFG = {**KERNEL_SHIFT_CFG, "outcome_trigger": True,
+                        "validate_axioms": True, "retire_stale_axioms": True}
+_TAG = ".v3" if V3 else (".v2" if V2 else "")
+ARTIFACT = f"comparison_results.shift{_TAG}.{SEED}.json"
 
 
 def reset_db(conn):

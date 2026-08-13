@@ -644,6 +644,10 @@ class EigenMemoryKernel:
         Latches: once the rule has changed it has changed, and the agent
         adapting afterwards must not un-fire it.
         """
+        # NB this counts OBSERVED trials, which lag stream position: agent.py
+        # skips observe() when a trial has no retrieval neighbour (empty buffer
+        # early on), so on seed 42 kernel trial 91 is stream trial 100. Read
+        # outcome_change_at as "after N observed trials", not as a stream index.
         self._outcome_n += 1
         if self._outcome_n <= OUTCOME_BURN_IN:
             self._outcome_seen_labels.add(actual)
@@ -661,6 +665,12 @@ class EigenMemoryKernel:
             return
 
         if actual not in self._outcome_seen_labels:
+            # Record it NOW. Without this the label stays "unseen" and every
+            # later occurrence re-triggers detection once the first axiom is
+            # stored and the trigger re-arms -- observed live on seed 42, which
+            # reported a second "unseen label 'DEFER'" eleven trials after the
+            # first, for a label it had already fired on.
+            self._outcome_seen_labels.add(actual)
             self.outcome_change_detected = True
             self.outcome_change_at = self._outcome_n
             self.outcome_change_reason = f"unseen label {actual!r}"

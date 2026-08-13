@@ -9,3 +9,5 @@ shift_rerun_driver.log
 *.out
 shift_replay23_driver.log
 shift_replay_shut.log
+shift_v2_42.log
+shift_v3_42.log
