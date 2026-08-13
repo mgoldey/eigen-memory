@@ -384,6 +384,7 @@ class EigenMemoryKernel:
         retire_stale_axioms=False,
         outcome_trigger=False,
         formation_min_post_change=FORMATION_MIN_POST_CHANGE,
+        truncate_at_change=False,
         labels=None,
     ):
         self.conn = db_conn
@@ -473,6 +474,11 @@ class EigenMemoryKernel:
         # wrote the pre-shift rule.
         self.formation_min_post_change = formation_min_post_change
         self._post_change_observed = 0
+        # Drop pre-change records from the contrast window when a change is
+        # detected. Pre-change SUCCESSES are successes under the old rule, and
+        # they pull the success mean toward the old regime -- which is what lets
+        # the crystallizer write the pre-shift rule back out mid-stream.
+        self.truncate_at_change = truncate_at_change
         # axiom text -> its consumed direction, so retiring a rule can release
         # the axis. Without this the novelty gate would retire the wrong rule
         # and then forbid the right one on the same structure.
@@ -516,6 +522,19 @@ class EigenMemoryKernel:
                 self._post_change_observed += 1
             elif self.outcome_change_detected and not was_detected:
                 self._post_change_observed = 1
+                if self.truncate_at_change:
+                    # Everything buffered so far describes the OLD rule. Keep
+                    # only the trial that revealed the change; the window refills
+                    # from post-change evidence, and formation_ready holds
+                    # crystallization until it has.
+                    dropped = len(self.fail_records) + len(self.succ_records) - 1
+                    cutoff = self._t - 1
+                    self.fail_records = [r for r in self.fail_records
+                                         if r["t"] > cutoff]
+                    self.succ_records = [r for r in self.succ_records
+                                         if r["t"] > cutoff]
+                    print(f"[EIGEN] change-point truncation: dropped {dropped} "
+                          f"pre-change records from the contrast window")
         if len(self.recent_trials) > 4 * VALIDATION_WINDOW:
             self.recent_trials = self.recent_trials[-4 * VALIDATION_WINDOW:]
         if self.window:

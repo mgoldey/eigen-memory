@@ -79,7 +79,18 @@ V3 = "--v3" in sys.argv
 if V3:
     KERNEL_SHIFT_CFG = {**KERNEL_SHIFT_CFG, "outcome_trigger": True,
                         "validate_axioms": True, "retire_stale_axioms": True}
-_TAG = ".v3" if V3 else (".v2" if V2 else "")
+# --v4 targets the window composition, which is what produced every stale axiom.
+# v3b crystallized at ~trial 120 with the 60-trial window still holding 40
+# pre-shift trials against 20 post-shift, and wrote the pre-shift rule. v4 drops
+# pre-change records at detection AND waits for 40 post-change trials, so the
+# contrast is formed from post-change evidence only.
+V4 = "--v4" in sys.argv
+if V4:
+    KERNEL_SHIFT_CFG = {**KERNEL_SHIFT_CFG, "outcome_trigger": True,
+                        "validate_axioms": True, "retire_stale_axioms": True,
+                        "truncate_at_change": True,
+                        "formation_min_post_change": 40}
+_TAG = ".v4" if V4 else (".v3" if V3 else (".v2" if V2 else ""))
 ARTIFACT = f"comparison_results.shift{_TAG}.{SEED}.json"
 
 
