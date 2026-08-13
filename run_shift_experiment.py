@@ -166,14 +166,24 @@ def run_arm(name, conn, trials, heldout, *, retrieval, eigen, static_context="",
     if eigen:
         result["detectability"] = [(float(l), float(e))
                                    for l, e in agent.kernel.detectability_history]
-        result["n_axioms"] = len(agent.kernel.consumed_directions)
+        # Report LIVE axioms only. A retired axiom is not injected at inference
+        # (agent.py filters on `retired`), so listing it here — or counting it
+        # in n_axioms — would credit the arm with a rule it never used. v3b
+        # wrote one axiom and retired it a batch later; the honest description
+        # of that run is "0 live axioms", not "1 axiom".
         with conn.cursor() as cur:
-            cur.execute("SELECT axiom_content, strength_score FROM semantic_core")
+            cur.execute("SELECT axiom_content, strength_score FROM semantic_core "
+                        "WHERE NOT COALESCE(retired, FALSE)")
             result["axioms"] = [
                 {"strength": float(s),
                  "rule": (a.split("RULE:")[-1].strip() if "RULE:" in a else a)[:500]}
                 for a, s in cur.fetchall()
             ]
+            cur.execute("SELECT count(*) FROM semantic_core "
+                        "WHERE COALESCE(retired, FALSE)")
+            result["n_axioms_retired"] = int(cur.fetchone()[0])
+        result["n_axioms"] = len(result["axioms"])
+        result["n_axioms_written"] = len(agent.kernel.consumed_directions)
         print(f"[{name}] G4 — score these against the planted post-shift rule "
               f"BEFORE reading held-out accuracy:", flush=True)
         for ax in result.get("axioms", []) or [{"strength": 0, "rule": "(none fired)"}]:
