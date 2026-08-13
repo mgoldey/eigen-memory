@@ -318,9 +318,18 @@ def _validate_axiom(axiom, recent, client, model, labels, window=VALIDATION_WIND
     for lab, (n_c, rule_hits, agent_hits) in by_class.items():
         if n_c < VALIDATION_MIN_CLASS_ITEMS:
             continue
-        if (rule_hits / n_c) + 1e-9 < (agent_hits / n_c):
+        rule_acc = rule_hits / n_c
+        # Floor the per-class bar at CHANCE, not just the agent's own rate. On
+        # the class whose rule changed the agent has already collapsed -- seed
+        # 42 scores 0.00 on DEFER through the validation region -- so comparing
+        # only to the agent passes a rule that is also 0.00 there. That is
+        # exactly the half-stale axiom this check exists to stop: v3b accepted
+        # one at 0.60 aggregate because its dead branch matched a dead baseline.
+        bar = max(agent_hits / n_c, chance)
+        if rule_acc + 1e-9 < bar:
             print(f"[EIGEN] axiom rejected on class {lab!r}: "
-                  f"{rule_hits / n_c:.2f} vs agent {agent_hits / n_c:.2f}")
+                  f"{rule_acc:.2f} vs bar {bar:.2f} "
+                  f"(agent {agent_hits / n_c:.2f}, chance {chance:.2f})")
             return False, acc, baseline
 
     return acc > baseline + margin, acc, baseline

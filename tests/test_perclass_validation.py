@@ -70,6 +70,29 @@ def test_half_stale_axiom_is_rejected_on_the_class_it_breaks():
     )
 
 
+def test_per_class_bar_is_floored_at_chance_not_the_agents_collapse():
+    """v3b's failure: the agent has ALREADY collapsed on the changed class.
+
+    Comparing the candidate only to the agent's own per-class rate puts the bar
+    on the floor exactly where it matters. Measured on seed 42, the agent scores
+    0.00 on DEFER through the whole validation region, so a rule that is also
+    0.00 on DEFER counts as "not materially worse" and gets stored -- which is
+    what happened, at 0.60 aggregate against a 0.40 baseline.
+    """
+    # 6 request items the agent gets wrong (as live), 4 report items it gets
+    # right. The candidate is stale on request, correct on report.
+    spec = ([(f"req{i}", "DEFER", False) for i in range(6)] +
+            [(f"rep{i}", "ESCALATE", True) for i in range(4)])
+    stub = _Stub(lambda item: "FILE" if item.startswith("req") else "ESCALATE")
+    ok, acc, base = _validate_axiom(
+        "RULE: pending -> FILE; completed -> ESCALATE", _recent(spec), stub,
+        model="m", labels=["DEFER", "FILE", "ESCALATE"])
+    assert not ok, (
+        f"accepted a rule scoring 0.00 on the changed class because the agent "
+        f"also scores 0.00 there (aggregate {acc:.2f} vs {base:.2f})"
+    )
+
+
 def test_uniformly_correct_axiom_still_accepted():
     """Per-class scoring must not block a genuinely good rule."""
     spec = ([(f"req{i}", "DEFER", False) for i in range(5)] +
