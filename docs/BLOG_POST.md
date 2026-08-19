@@ -32,6 +32,22 @@ be compressed into weights nobody can read. They can be compressed into **rules*
 natural-language axioms the agent writes about its own failures, auditable by a human,
 portable across models, injectable into any context window.
 
+```mermaid
+flowchart LR
+    A["query"] --> B["frozen LLM<br/>(predict + logprobs)"]
+    B --> C{"surprise?"}
+    C -- no --> D["store success<br/>residual"]
+    C -- yes --> E["store failure<br/>residual"]
+    D & E --> F["spectral trigger<br/>(contrastive PCA +<br/>permutation edge)"]
+    F -- "not detected" --> G["wait"]
+    F -- "axis detected" --> H["outcome trigger<br/>(e-process +<br/>unseen labels)"]
+    H -- "change confirmed" --> I["crystallize:<br/>LLM writes axiom"]
+    I --> J["validate axiom<br/>vs recent trials"]
+    J -- pass --> K["inject axiom<br/>into future prompts"]
+    J -- fail --> L["discard"]
+    K -.-> B
+```
+
 The pipeline is a two-stage lossy compressor:
 
 1. **The gate (what to keep).** Surprise is read directly from the model's logits — the NLL of

@@ -1,5 +1,26 @@
 # Eigen-Memory: compressing an agent's surprises into rules instead of weights
 
+An inference-time memory layer for frozen LLMs that compresses surprising failures into
+reusable English rules via spectral analysis of prediction residuals. No fine-tuning,
+no gradient access — just a wrapper that watches what the model gets wrong, detects
+structure in those errors, and writes itself a short rule to inject into future prompts.
+
+```mermaid
+flowchart LR
+    A["query"] --> B["frozen LLM<br/>(predict + logprobs)"]
+    B --> C{"surprise?"}
+    C -- no --> D["store success<br/>residual"]
+    C -- yes --> E["store failure<br/>residual"]
+    D & E --> F["spectral trigger<br/>(contrastive PCA +<br/>permutation edge)"]
+    F -- "not detected" --> G["wait"]
+    F -- "axis detected" --> H["outcome trigger<br/>(e-process +<br/>unseen labels)"]
+    H -- "change confirmed" --> I["crystallize:<br/>LLM writes axiom"]
+    I --> J["validate axiom<br/>vs recent trials"]
+    J -- pass --> K["inject axiom<br/>into future prompts"]
+    J -- fail --> L["discard"]
+    K -.-> B
+```
+
 Titans ([Behrouz et al. 2024](https://arxiv.org/abs/2501.00663)) keeps what surprises it and
 compresses it into neural weights — but Titans is an architecture you pretrain from scratch.
 This project rebuilds those economics as a pure inference-time wrapper around a frozen model:
