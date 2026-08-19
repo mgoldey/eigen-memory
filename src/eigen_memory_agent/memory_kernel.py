@@ -23,6 +23,8 @@ fakes in tests/test_kernel_consolidation.py.
 """
 
 import json
+from dataclasses import dataclass, field, fields
+from typing import Optional
 
 import numpy as np
 from sklearn.decomposition import PCA
@@ -32,6 +34,9 @@ from sklearn.decomposition import PCA
 # survives any projection that keeps its neighborhood, and reducing d moves the
 # BBP detectability transition earlier (THEORY.md section 5).
 R_COMPONENTS = 50
+
+
+# ---- Sample floors ----
 # Floors before the spectral machinery runs at all. Below these, even the
 # permutation edge is too noisy to trust.
 MIN_FAIL_RESIDUALS = 25
@@ -48,21 +53,26 @@ MIN_FAIL_RESIDUALS = 25
 # 15 keeps a usable sample for a 40-component contrast while roughly doubling the
 # number of eligible checks on the starved seeds.
 MIN_FAIL_RESIDUALS_SEQ = 15
-# Axiom validation (§9b): how many of the MOST RECENT trials a candidate axiom is
-# scored on, and the minimum needed to judge at all. One batch of 10 is the
-# natural unit -- long enough to separate a live rule from a superseded one,
-# short enough that it is genuinely "recent" on a stream where the rule can
-# change every 60 trials.
+MIN_SUCC_RESIDUALS = 10
+
+
+# ---- Axiom validation (§9b) ----
+# How many of the MOST RECENT trials a candidate axiom is scored on, and the
+# minimum needed to judge at all. One batch of 10 is the natural unit -- long
+# enough to separate a live rule from a superseded one, short enough that it is
+# genuinely "recent" on a stream where the rule can change every 60 trials.
 VALIDATION_WINDOW = 10
 VALIDATION_MIN_ITEMS = 5
 # Minimum examples of a class before its per-class score can veto a candidate.
 # Below this a single unlucky item in a rare class would block every rule.
 VALIDATION_MIN_CLASS_ITEMS = 3
-# Outcome trigger (§9d). Trials used to establish the pre-change hit rate before
-# the detector is allowed to fire, and the betting fraction of the e-process.
-# Measured offline on all five Rule-Shift streams: 5/5 detection, 0 pre-shift
-# false fires, median delay 1 trial -- against 0/5 for the spectral streak rule
-# on the same data.
+
+
+# ---- Outcome trigger (§9d) ----
+# Trials used to establish the pre-change hit rate before the detector is allowed
+# to fire, and the betting fraction of the e-process. Measured offline on all
+# five Rule-Shift streams: 5/5 detection, 0 pre-shift false fires, median delay
+# 1 trial -- against 0/5 for the spectral streak rule on the same data.
 OUTCOME_BURN_IN = 30
 OUTCOME_BET = 0.5
 # Post-change trials required before a rule may be WRITTEN. Detection stays
@@ -73,7 +83,9 @@ OUTCOME_BET = 0.5
 # enough for the contrast to be dominated by post-change evidence without
 # waiting so long that a short stream never qualifies.
 FORMATION_MIN_POST_CHANGE = 20
-MIN_SUCC_RESIDUALS = 10
+
+
+# ---- Permutation edge ----
 # Number of label-shuffles used to estimate the noise edge. The edge is the max
 # top-eigenvalue over shuffles: anything a random fail/success split can produce
 # is noise by construction. With max-over-N as the edge, a pure-noise lambda1
@@ -94,15 +106,75 @@ E_CALIBRATOR_KAPPA = 0.4
 # by ALPHA for any stopping time, which is the honest version of the false-fire
 # budget the permutation-quantile-plus-streak rule only approximated.
 E_PROCESS_ALPHA = 0.05
+
+
+# ---- Direction gates ----
 # The direction must persist across consecutive checks (|cos| above this) before
 # it is trusted — the failure stream is non-stationary, so a one-off axis is noise.
 STABILITY_COS = 0.95
 # A new direction too close to an already-crystallized one (|cos| above this) is
 # the same axiom again; skip it. Deduplication falls out of geometry, not bookkeeping.
 NOVELTY_COS = 0.8
-# Contrast-set sizes for the introspection prompt.
+
+
+# ---- Contrast-set sizes for the introspection prompt ----
 N_CONTRAST_PER_SIDE = 3
 N_MATCHED_SUCCESSES = 3
+
+
+# ---------------------------------------------------------------------------
+# KernelConfig — the 22 keyword arguments collapsed into a data object.
+# Named constructors provide the two pre-registered configurations so the valid
+# flag combinations are self-documenting rather than implicit.
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class KernelConfig:
+    """Configuration for EigenMemoryKernel, replacing 22 keyword arguments."""
+
+    model: str = "gemma3:4b"
+    min_fail_residuals: int = MIN_FAIL_RESIDUALS
+    min_succ_residuals: int = MIN_SUCC_RESIDUALS
+    n_permutations: int = N_PERMUTATIONS
+    stability_cos: float = STABILITY_COS
+    novelty_cos: float = NOVELTY_COS
+    rng_seed: int = 0
+    extra_body: Optional[dict] = None
+    window: Optional[int] = None
+    contrast_on: str = "residual"
+    consecutive_detections: int = 1
+    sequential_gate: bool = False
+    n_permutations_seq: int = N_PERMUTATIONS_SEQ
+    e_process_alpha: float = E_PROCESS_ALPHA
+    validate_axioms: bool = False
+    retire_stale_axioms: bool = False
+    outcome_trigger: bool = False
+    formation_min_post_change: int = FORMATION_MIN_POST_CHANGE
+    truncate_at_change: bool = False
+    labels: Optional[list] = None
+
+    @classmethod
+    def static_task(cls, **overrides):
+        """The static-task configuration (number-game, TREC, flip)."""
+        return cls(**overrides)
+
+    @classmethod
+    def shift_v4(cls, seed=0, **overrides):
+        """The v4 Rule-Shift pipeline: outcome trigger, validation, retirement,
+        change-point truncation, and formation readiness gating."""
+        defaults = dict(
+            rng_seed=seed,
+            window=60,
+            contrast_on="embedding_mean",
+            consecutive_detections=3,
+            stability_cos=0.5,
+            outcome_trigger=True,
+            validate_axioms=True,
+            retire_stale_axioms=True,
+            truncate_at_change=True,
+            formation_min_post_change=40,
+        )
+        return cls(**{**defaults, **overrides})
 
 
 def _unit(v):
@@ -242,6 +314,12 @@ def _validate_axiom(axiom, recent, client, model, labels, window=VALIDATION_WIND
 
     Returns (accepted, axiom_accuracy, baseline_accuracy).
 
+    This free-function form is kept for backward compatibility with tests that
+    import it directly.  The implementation lives in
+    ``EigenMemoryKernel._validate_axiom_impl`` (below), which has access to
+    ``self.client``, ``self.model``, etc. and therefore needs only the axiom
+    text as an explicit argument.
+
     §9b: the crystallizer has no notion of when a rule stopped being true. The
     sequential trigger fired at batch 7 for a shift landing at batch 11 and wrote
     an accurate statement of the PRE-shift rule, false four batches later. A rule
@@ -258,22 +336,18 @@ def _validate_axiom(axiom, recent, client, model, labels, window=VALIDATION_WIND
     Failures reject. Failing open would silently restore the unvalidated
     behaviour this exists to prevent.
     """
+    return _validate_axiom_core(
+        axiom, recent, client, model, labels, window, min_items, extra_body)
+
+
+def _validate_axiom_core(axiom, recent, client, model, labels, window, min_items, extra_body):
+    """Shared implementation for both the free function and the method."""
     tail = recent[-window:]
     if len(tail) < min_items:
         return False, 0.0, 0.0
 
-    # Beat the agent's recent hit rate AND chance. On seed 7 an axiom passed at
-    # 0.30 against a 0.20 baseline on a 3-label task -- both at or below the 0.33
-    # chance line, so the margin was noise, not evidence. Requiring the candidate
-    # to clear chance as well stops a barely-better-than-nothing rule from earning
-    # a place in every future context.
     chance = 1.0 / max(len(labels), 1)
     baseline = max(sum(1 for r in tail if r["was_correct"]) / len(tail), chance)
-    # Margin that scales with the evidence. v3 accepted 0.40 against a 0.33
-    # baseline on a ten-item tail -- a one-item difference -- and the resulting
-    # axiom scored 0.500 held-out, WORSE than injecting nothing (0.556). One
-    # standard error of a proportion at this n is the natural floor; below it,
-    # "better" is indistinguishable from noise.
     margin = float(np.sqrt(max(baseline * (1.0 - baseline), 0.01) / len(tail)))
     hits = 0
     preds = []
@@ -291,9 +365,6 @@ def _validate_axiom(axiom, recent, client, model, labels, window=VALIDATION_WIND
             )
             pred = _match_label(resp.choices[0].message.content, labels)
         except Exception as e:
-            # None accuracy = "could not score", distinct from a genuine 0.0.
-            # The write path rejects either way; the retirement path must NOT
-            # treat an unreachable model as evidence a rule went stale.
             print(f"[EIGEN] axiom validation call failed: {e}; rejecting")
             return False, None, baseline
         preds.append(pred)
@@ -301,14 +372,6 @@ def _validate_axiom(axiom, recent, client, model, labels, window=VALIDATION_WIND
             hits += 1
     acc = hits / len(tail)
 
-    # Per-class check. v3's axiom was right on `report` (0.824 held-out) and
-    # catastrophically wrong on `request` (0.077, against 0.359 for injecting
-    # NOTHING). Those average to something unremarkable, so aggregate scoring
-    # cannot see it -- a half-stale rule destroys the class whose rule changed
-    # while the intact branch carries the mean. Reject if the candidate is
-    # materially worse than the agent's own recent rate on ANY class with enough
-    # examples to judge; a class with one or two items cannot support the call
-    # and must not veto an otherwise strong rule.
     by_class = {}
     for r, pred in zip(tail, preds):
         c = by_class.setdefault(r["actual"], [0, 0, 0])
@@ -319,12 +382,6 @@ def _validate_axiom(axiom, recent, client, model, labels, window=VALIDATION_WIND
         if n_c < VALIDATION_MIN_CLASS_ITEMS:
             continue
         rule_acc = rule_hits / n_c
-        # Floor the per-class bar at CHANCE, not just the agent's own rate. On
-        # the class whose rule changed the agent has already collapsed -- seed
-        # 42 scores 0.00 on DEFER through the validation region -- so comparing
-        # only to the agent passes a rule that is also 0.00 there. That is
-        # exactly the half-stale axiom this check exists to stop: v3b accepted
-        # one at 0.60 aggregate because its dead branch matched a dead baseline.
         bar = max(agent_hits / n_c, chance)
         if rule_acc + 1e-9 < bar:
             print(f"[EIGEN] axiom rejected on class {lab!r}: "
@@ -362,63 +419,32 @@ RULE: [one concise, testable rule mapping the property to the labels]"""
 
 
 class EigenMemoryKernel:
-    def __init__(
-        self,
-        db_conn,
-        openai_client,
-        model="gemma3:4b",
-        min_fail_residuals=MIN_FAIL_RESIDUALS,
-        min_succ_residuals=MIN_SUCC_RESIDUALS,
-        n_permutations=N_PERMUTATIONS,
-        stability_cos=STABILITY_COS,
-        novelty_cos=NOVELTY_COS,
-        rng_seed=0,
-        extra_body=None,
-        window=None,
-        contrast_on="residual",
-        consecutive_detections=1,
-        sequential_gate=False,
-        n_permutations_seq=N_PERMUTATIONS_SEQ,
-        e_process_alpha=E_PROCESS_ALPHA,
-        validate_axioms=False,
-        retire_stale_axioms=False,
-        outcome_trigger=False,
-        formation_min_post_change=FORMATION_MIN_POST_CHANGE,
-        truncate_at_change=False,
-        labels=None,
-    ):
+    def __init__(self, db_conn, openai_client, config=None, **kwargs):
+        """Create a kernel from a KernelConfig or from keyword arguments.
+
+        Both forms are supported: ``EigenMemoryKernel(conn, client, config=cfg)``
+        and the original keyword form for backward compatibility with experiment
+        scripts and tests.
+        """
+        if config is None:
+            config = KernelConfig(**kwargs)
+        elif kwargs:
+            raise TypeError("pass config OR keyword arguments, not both")
+
+        self.config = config
         self.conn = db_conn
         self.client = openai_client
-        self.model = model
-        self.min_fail_residuals = min_fail_residuals
-        self.min_succ_residuals = min_succ_residuals
-        self.n_permutations = n_permutations
-        self.stability_cos = stability_cos
-        self.novelty_cos = novelty_cos
-        self.rng = np.random.default_rng(rng_seed)
-        # Extra request-body fields for the crystallization call (e.g.
-        # {"reasoning_effort": "none"} to keep a thinking model's final answer
-        # in .content on Ollama's OpenAI-compat endpoint).
-        self.extra_body = extra_body
-        # Rule-Shift additions (docs/NEXT_EXPERIMENT.md §5; defaults preserve
-        # the static-task behavior exactly):
-        #  window — keep only the most recent `window` observed trials in the
-        #    contrast buffers. A non-stationary stream needs forgetting: without
-        #    it, 100 pre-shift records swamp the 60 post-shift ones. This is
-        #    the legible-memory analogue of Titans' forgetting gate.
-        #  contrast_on — "residual" (static tasks: variance contrast of
-        #    retrieval residuals) or "embedding_mean" (shift tasks: two-sample
-        #    MEAN contrast of query embeddings). The 2026-07-17 amendment: the
-        #    pre-registered query-embedding cPCA is variance-based and provably
-        #    blind to the shift's failure structure — failures concentrate on
-        #    one polarity and successes on the other, a LOCATION difference
-        #    that symmetric antipodal clusters cancel out of every covariance
-        #    contrast. Same permutation-edge / stability / novelty gates.
-        #  consecutive_detections — checks that must be detectable in a row
-        #    before crystallizing (G3 pre-registers 3; 1 = old behavior).
-        self.window = window
-        self.contrast_on = contrast_on
-        self.consecutive_detections = consecutive_detections
+        self.model = config.model
+        self.min_fail_residuals = config.min_fail_residuals
+        self.min_succ_residuals = config.min_succ_residuals
+        self.n_permutations = config.n_permutations
+        self.stability_cos = config.stability_cos
+        self.novelty_cos = config.novelty_cos
+        self.rng = np.random.default_rng(config.rng_seed)
+        self.extra_body = config.extra_body
+        self.window = config.window
+        self.contrast_on = config.contrast_on
+        self.consecutive_detections = config.consecutive_detections
         self._t = 0
         self._detect_streak = 0
 
@@ -443,23 +469,23 @@ class EigenMemoryKernel:
         self.detectability_history = []
         # Sequential (e-value) trigger. Off by default so every committed result
         # stays reproducible; the streak rule remains the as-run mechanism.
-        self.sequential_gate = sequential_gate
-        self.n_permutations_seq = n_permutations_seq
-        self._eproc = _EProcess(alpha=e_process_alpha)
+        self.sequential_gate = config.sequential_gate
+        self.n_permutations_seq = config.n_permutations_seq
+        self._eproc = _EProcess(alpha=config.e_process_alpha)
         self.evalue_history = []
         # Validate a candidate axiom against recent trials before storing it.
         # Off by default: it changes what gets written, so every committed
         # result stays reproducible. See §9b.
-        self.validate_axioms = validate_axioms
-        self.labels = labels
+        self.validate_axioms = config.validate_axioms
+        self.labels = config.labels
         self.recent_trials = []
         self.validation_history = []
         # Re-validate stored axioms and retire the ones that stopped being true.
         # Off by default alongside the rest of §9b/§9c.
-        self.retire_stale_axioms = retire_stale_axioms
+        self.retire_stale_axioms = config.retire_stale_axioms
         self.retirement_history = []
         # Outcome-stream change trigger (§9d), off by default.
-        self.outcome_trigger = outcome_trigger
+        self.outcome_trigger = config.outcome_trigger
         self.outcome_change_detected = False
         self.outcome_change_at = None
         self.outcome_change_reason = None
@@ -472,13 +498,13 @@ class EigenMemoryKernel:
         # enough post-change evidence. v3 crystallized two batches after the
         # trigger, against a window still dominated by pre-shift trials, and
         # wrote the pre-shift rule.
-        self.formation_min_post_change = formation_min_post_change
+        self.formation_min_post_change = config.formation_min_post_change
         self._post_change_observed = 0
         # Drop pre-change records from the contrast window when a change is
         # detected. Pre-change SUCCESSES are successes under the old rule, and
         # they pull the success mean toward the old regime -- which is what lets
         # the crystallizer write the pre-shift rule back out mid-stream.
-        self.truncate_at_change = truncate_at_change
+        self.truncate_at_change = config.truncate_at_change
         # axiom text -> its consumed direction, so retiring a rule can release
         # the axis. Without this the novelty gate would retire the wrong rule
         # and then forbid the right one on the same structure.
@@ -489,7 +515,7 @@ class EigenMemoryKernel:
 
     def observe(self, embedding, residual, was_correct, context_input, prediction, actual):
         """Record one trial's retrieval residual, keyed on outcome (correctness),
-        not on surprise."""
+        not on surprise.  Delegates to: append, trigger, prune."""
         embedding = np.asarray(embedding, dtype=float)
         residual = np.asarray(residual, dtype=float)
         if self._embed_sum is None:
@@ -507,34 +533,34 @@ class EigenMemoryKernel:
             "t": self._t,
         }
         (self.succ_records if was_correct else self.fail_records).append(rec)
-        # Chronological tail for axiom validation. fail/succ_records are split by
-        # outcome and window-pruned, so neither preserves recency across both
-        # classes -- which is exactly what validating against "recent trials"
-        # needs. Bounded to a few validation windows' worth.
         self.recent_trials.append(
             {"input": context_input, "actual": actual, "was_correct": was_correct})
-        if self.outcome_trigger:
-            was_detected = self.outcome_change_detected
-            self._update_outcome_trigger(was_correct, actual)
-            if was_detected and self.outcome_change_detected:
-                # Count trials observed SINCE the change, which is what decides
-                # whether the contrast window carries post-change evidence.
-                self._post_change_observed += 1
-            elif self.outcome_change_detected and not was_detected:
-                self._post_change_observed = 1
-                if self.truncate_at_change:
-                    # Everything buffered so far describes the OLD rule. Keep
-                    # only the trial that revealed the change; the window refills
-                    # from post-change evidence, and formation_ready holds
-                    # crystallization until it has.
-                    dropped = len(self.fail_records) + len(self.succ_records) - 1
-                    cutoff = self._t - 1
-                    self.fail_records = [r for r in self.fail_records
-                                         if r["t"] > cutoff]
-                    self.succ_records = [r for r in self.succ_records
-                                         if r["t"] > cutoff]
-                    print(f"[EIGEN] change-point truncation: dropped {dropped} "
-                          f"pre-change records from the contrast window")
+
+        self._process_outcome_trigger(was_correct, actual)
+        self._prune_window()
+
+    def _process_outcome_trigger(self, was_correct, actual):
+        """Update the outcome-stream change detector and handle truncation."""
+        if not self.outcome_trigger:
+            return
+        was_detected = self.outcome_change_detected
+        self._update_outcome_trigger(was_correct, actual)
+        if was_detected and self.outcome_change_detected:
+            self._post_change_observed += 1
+        elif self.outcome_change_detected and not was_detected:
+            self._post_change_observed = 1
+            if self.truncate_at_change:
+                dropped = len(self.fail_records) + len(self.succ_records) - 1
+                cutoff = self._t - 1
+                self.fail_records = [r for r in self.fail_records
+                                     if r["t"] > cutoff]
+                self.succ_records = [r for r in self.succ_records
+                                     if r["t"] > cutoff]
+                print(f"[EIGEN] change-point truncation: dropped {dropped} "
+                      f"pre-change records from the contrast window")
+
+    def _prune_window(self):
+        """Keep the contrast buffers and recent-trial tail bounded."""
         if len(self.recent_trials) > 4 * VALIDATION_WINDOW:
             self.recent_trials = self.recent_trials[-4 * VALIDATION_WINDOW:]
         if self.window:
@@ -670,6 +696,16 @@ class EigenMemoryKernel:
                 # (the rule really did change), so without this it would fire on
                 # every subsequent check. A LATER change re-arms it below.
                 self._outcome_consumed = True
+
+    # ---------------------------------------------------------- axiom validation
+
+    def _validate_axiom_impl(self, axiom_text):
+        """Score a candidate axiom against recent trials using self's state."""
+        labels = self.labels or sorted(
+            {r["actual"] for r in self.recent_trials if r.get("actual")})
+        return _validate_axiom_core(
+            axiom_text, self.recent_trials, self.client, self.model, labels,
+            VALIDATION_WINDOW, VALIDATION_MIN_ITEMS, self.extra_body)
 
     # ----------------------------------------------------------- crystallization
 
@@ -840,13 +876,9 @@ class EigenMemoryKernel:
             print(f"[EIGEN] axiom re-validation SELECT failed: {e}")
             return []
 
-        labels = self.labels or sorted(
-            {r["actual"] for r in self.recent_trials if r.get("actual")})
         retired = []
         for axiom_id, content in rows:
-            ok, acc, base = _validate_axiom(
-                content, self.recent_trials, self.client, self.model, labels,
-                extra_body=self.extra_body)
+            ok, acc, base = self._validate_axiom_impl(content)
             # acc is None when the rule could not be scored at all (model
             # unreachable). Only retire when it actually answered and lost.
             if ok or acc is None or acc >= base:
@@ -945,11 +977,7 @@ class EigenMemoryKernel:
         axiom = f"RULE: {rule}"
 
         if self.validate_axioms:
-            labels = self.labels or sorted(
-                {r["actual"] for r in self.recent_trials if r.get("actual")})
-            ok, acc, base = _validate_axiom(
-                axiom, self.recent_trials, self.client, self.model, labels,
-                extra_body=self.extra_body)
+            ok, acc, base = self._validate_axiom_impl(axiom)
             self.validation_history.append(
                 {"axiom": axiom, "accuracy": acc, "baseline": base, "accepted": ok})
             print(f"[EIGEN] axiom validation: {acc:.2f} vs baseline {base:.2f} "

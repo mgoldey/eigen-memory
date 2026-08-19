@@ -25,7 +25,10 @@ distinct defects were found and fixed, the largest being that detection was watc
 768-dimensional contrast statistic operating with no margin while the agent's own
 **correctness stream** carried the same event at far higher signal. Rebuilt, the same five
 seeds give **+0.242** — endpoint met, every crystallized rule correct on both branches, and
-perfect accuracy on the class the shift redefines.
+perfect accuracy on the class the shift redefines. **This is an in-sample result: the v4
+pipeline was iteratively debugged and tuned on the same five seeds it reports on. The
+pre-registered pipeline scored +0.078. Without held-out seeds or a second task, the
+generalization claim is unverified.**
 
 | # | Experiment | Verdict | Why |
 |---|------------|---------|-----|

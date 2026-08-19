@@ -21,58 +21,11 @@ import pytest
 
 from src.eigen_memory_agent.agent import _surprise_messages, clean_prediction
 from src.eigen_memory_agent.memory_kernel import EigenMemoryKernel
+from conftest import FakeConn, FakeLLM
 
 D = 128
 BETA = 1.0
 NOISE = 0.05  # per-dim residual noise
-
-
-class FakeCursor:
-    def __init__(self, log):
-        self.log = log
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        return False
-
-    def execute(self, sql, params=None):
-        self.log.append((" ".join(sql.split()), params))
-
-
-class FakeConn:
-    def __init__(self):
-        self.executed = []
-        self.commits = 0
-
-    def cursor(self):
-        return FakeCursor(self.executed)
-
-    def commit(self):
-        self.commits += 1
-
-    def rollback(self):
-        pass
-
-
-class FakeLLM:
-    """Mimics client.chat.completions.create; records prompts."""
-
-    def __init__(self, reply="<thought>...</thought>\nRULE: requests and reports route oppositely."):
-        self.prompts = []
-        self.reply = reply
-        chat = type("Chat", (), {})()
-        completions = type("Completions", (), {})()
-        completions.create = self._create
-        chat.completions = completions
-        self.chat = chat
-
-    def _create(self, model=None, messages=None, **kw):
-        self.prompts.append(messages[-1]["content"])
-        msg = type("Msg", (), {"content": self.reply})()
-        choice = type("Choice", (), {"message": msg})()
-        return type("Resp", (), {"choices": [choice]})()
 
 
 @pytest.fixture()

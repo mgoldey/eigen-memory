@@ -458,6 +458,10 @@ Five seeds, same pre-registered bar:
 | as pre-registered | 0.658 | +0.078 — **miss** |
 | rebuilt | **0.822** | **+0.242 — met** |
 
+**Caveat:** the rebuilt (+0.242) result is in-sample — the v4 pipeline was iteratively
+debugged and tuned on the same five seeds it reports on. Without held-out seeds or a second
+task, the generalization claim is unverified. The pre-registered pipeline scored +0.078.
+
 Fired on 3 of 5 seeds; every rule it wrote was correct on both branches; accuracy on the
 class the shift redefines was **1.000 on every seed that fired**. One of those seeds scored
 0.978 against an oracle of 0.900 — the self-written rule beat pasting the true rule in.

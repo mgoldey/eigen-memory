@@ -23,37 +23,11 @@ would fall back to the e-process alone. These tests pin both paths.
 import numpy as np
 
 from src.eigen_memory_agent.memory_kernel import EigenMemoryKernel
-
-
-class _Conn:
-    def __init__(self):
-        self.inserts = 0
-
-    def cursor(self):
-        class _Cur:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return False
-
-            def execute(self, sql, params=None):
-                pass
-
-            def fetchall(self):
-                return []
-
-        return _Cur()
-
-    def commit(self):
-        pass
-
-    def rollback(self):
-        pass
+from conftest import NullConn
 
 
 def _kernel(**kw):
-    return EigenMemoryKernel(_Conn(), None, model="m", rng_seed=0,
+    return EigenMemoryKernel(NullConn(), None, model="m", rng_seed=0,
                              outcome_trigger=True, **kw)
 
 
@@ -111,7 +85,7 @@ def test_trigger_needs_a_burn_in():
 
 def test_disabled_by_default():
     """Off unless asked for, so committed results stay reproducible."""
-    k = EigenMemoryKernel(_Conn(), None, model="m", rng_seed=0)
+    k = EigenMemoryKernel(NullConn(), None, model="m", rng_seed=0)
     rng = np.random.default_rng(4)
     _observe(k, "A", True, 40, rng)
     k.observe(embedding=rng.standard_normal(8), residual=rng.standard_normal(8),

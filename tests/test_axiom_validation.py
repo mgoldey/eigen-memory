@@ -21,6 +21,7 @@ import numpy as np
 import pytest
 
 from src.eigen_memory_agent.memory_kernel import _validate_axiom
+from conftest import NullConn
 
 
 class _StubClient:
@@ -138,35 +139,6 @@ def test_kernel_rejects_a_stale_axiom_end_to_end():
     """
     from src.eigen_memory_agent.memory_kernel import EigenMemoryKernel
 
-    class _Conn:
-        def __init__(self):
-            self.inserts = 0
-
-        def cursor(self):
-            conn = self
-
-            class _Cur:
-                def __enter__(self):
-                    return self
-
-                def __exit__(self, *a):
-                    return False
-
-                def execute(self, sql, params=None):
-                    if "INSERT INTO semantic_core" in sql:
-                        conn.inserts += 1
-
-                def fetchall(self):
-                    return []
-
-            return _Cur()
-
-        def commit(self):
-            pass
-
-        def rollback(self):
-            pass
-
     class _Client:
         """Crystallizes a rule that is stale, then answers validation with it."""
 
@@ -182,7 +154,7 @@ def test_kernel_rejects_a_stale_axiom_end_to_end():
             return type("R", (), {"choices": [type("C", (), {
                 "message": type("M", (), {"content": out})()})()]})()
 
-    conn, client = _Conn(), _Client()
+    conn, client = NullConn(), _Client()
     k = EigenMemoryKernel(conn, client, model="m", validate_axioms=True,
                           labels=["DEFER", "FILE"], rng_seed=0)
     rng = np.random.default_rng(0)

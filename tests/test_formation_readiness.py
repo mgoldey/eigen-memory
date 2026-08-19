@@ -16,37 +16,11 @@ WRITING waits for evidence.
 import numpy as np
 
 from src.eigen_memory_agent.memory_kernel import EigenMemoryKernel
-
-
-class _Conn:
-    def __init__(self):
-        self.inserts = 0
-
-    def cursor(self):
-        class _Cur:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return False
-
-            def execute(self, sql, params=None):
-                pass
-
-            def fetchall(self):
-                return []
-
-        return _Cur()
-
-    def commit(self):
-        pass
-
-    def rollback(self):
-        pass
+from conftest import NullConn
 
 
 def _kernel(**kw):
-    return EigenMemoryKernel(_Conn(), None, model="m", rng_seed=0,
+    return EigenMemoryKernel(NullConn(), None, model="m", rng_seed=0,
                              outcome_trigger=True, window=60, **kw)
 
 
@@ -83,7 +57,7 @@ def test_readiness_is_off_when_the_trigger_is_off():
 
     The streak-rule and sequential paths must behave exactly as before.
     """
-    k = EigenMemoryKernel(_Conn(), None, model="m", rng_seed=0, window=60)
+    k = EigenMemoryKernel(NullConn(), None, model="m", rng_seed=0, window=60)
     rng = np.random.default_rng(2)
     _feed(k, 50, "A", True, rng)
     assert k.formation_ready, "readiness gated a path that has no change point"

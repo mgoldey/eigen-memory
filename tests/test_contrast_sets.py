@@ -17,37 +17,11 @@ examples all sharing one label while the embedding ordering did not.
 import numpy as np
 
 from src.eigen_memory_agent.memory_kernel import EigenMemoryKernel
-
-
-class _Conn:
-    def __init__(self):
-        self.inserts = 0
-
-    def cursor(self):
-        class _Cur:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return False
-
-            def execute(self, sql, params=None):
-                pass
-
-            def fetchall(self):
-                return []
-
-        return _Cur()
-
-    def commit(self):
-        pass
-
-    def rollback(self):
-        pass
+from conftest import NullConn
 
 
 def _kernel(contrast_on):
-    return EigenMemoryKernel(_Conn(), None, model="m", rng_seed=0,
+    return EigenMemoryKernel(NullConn(), None, model="m", rng_seed=0,
                              contrast_on=contrast_on)
 
 

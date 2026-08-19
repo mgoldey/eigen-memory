@@ -41,9 +41,9 @@ Writes comparison_results.shift.<seed>.json.
 Usage: uv run python run_shift_experiment.py [seed]
 """
 
+import argparse
 import json
 import os
-import sys
 
 import numpy as np
 import psycopg2
@@ -52,15 +52,32 @@ from src.config import get_db_string
 from src.dataset import (N_SHIFT_PRE, get_labels, load_shift, shift_oracle_text,
                          shift_rules)
 from src.eigen_memory_agent.agent import AgenticMemoryLoop, parse_prediction
+from src.eigen_memory_agent.memory_kernel import KernelConfig
 from src import paths
 
-_ARGV = [a for a in sys.argv[1:] if not a.startswith("--")]
-SEED = int(_ARGV[0]) if _ARGV else 42
-# --v2 turns on the three §9b/§9c mechanisms together: the sequential (e-value)
-# trigger, axiom validation at write time, and re-validation/retirement of stored
-# axioms. Opt-in so the committed as-run results stay reproducible, and it writes
-# to a distinct artifact so the two configurations are never conflated.
-V2 = "--v2" in sys.argv
+
+def _parse_args():
+    p = argparse.ArgumentParser(
+        description="Rule-Shift experiment (docs/NEXT_EXPERIMENT.md §5)")
+    p.add_argument("seed", nargs="?", type=int, default=42,
+                   help="random seed (default: 42)")
+    version = p.add_mutually_exclusive_group()
+    version.add_argument(
+        "--v2", action="store_true",
+        help="§9b/§9c: sequential trigger + axiom validation + retirement")
+    version.add_argument(
+        "--v3", action="store_true",
+        help="outcome-stream trigger + validation + retirement")
+    version.add_argument(
+        "--v4", action="store_true",
+        help="v3 + change-point truncation + formation readiness gating")
+    return p.parse_args()
+
+
+_args = _parse_args()
+SEED = _args.seed
+V2, V3, V4 = _args.v2, _args.v3, _args.v4
+
 BATCH = 10
 LABELS = get_labels("flip")
 EXECUTOR = "gemma4:12b"
@@ -71,20 +88,9 @@ KERNEL_SHIFT_CFG = {"window": 60, "contrast_on": "embedding_mean",
 if V2:
     KERNEL_SHIFT_CFG = {**KERNEL_SHIFT_CFG, "sequential_gate": True,
                         "validate_axioms": True, "retire_stale_axioms": True}
-# --v3 is the assembled pipeline: detect on the OUTCOME stream (5/5 offline vs
-# 0/5 for the streak rule on the same telemetry), form on the spectral axis with
-# the corrected contrast-set projection, validate the candidate against recent
-# trials, and retire it if it later goes stale.
-V3 = "--v3" in sys.argv
 if V3:
     KERNEL_SHIFT_CFG = {**KERNEL_SHIFT_CFG, "outcome_trigger": True,
                         "validate_axioms": True, "retire_stale_axioms": True}
-# --v4 targets the window composition, which is what produced every stale axiom.
-# v3b crystallized at ~trial 120 with the 60-trial window still holding 40
-# pre-shift trials against 20 post-shift, and wrote the pre-shift rule. v4 drops
-# pre-change records at detection AND waits for 40 post-change trials, so the
-# contrast is formed from post-change evidence only.
-V4 = "--v4" in sys.argv
 if V4:
     KERNEL_SHIFT_CFG = {**KERNEL_SHIFT_CFG, "outcome_trigger": True,
                         "validate_axioms": True, "retire_stale_axioms": True,

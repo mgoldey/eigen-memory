@@ -19,46 +19,7 @@ import numpy as np
 import pytest
 
 from src.eigen_memory_agent.memory_kernel import EigenMemoryKernel
-
-
-class _Conn:
-    """Captures INSERTs and UPDATEs against semantic_core."""
-
-    def __init__(self, rows=()):
-        self.rows = list(rows)          # (id, axiom_content, eigen_vector)
-        self.retired = []
-        self.inserts = 0
-
-    def cursor(self):
-        conn = self
-
-        class _Cur:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return False
-
-            def execute(self, sql, params=None):
-                s = " ".join(sql.split())
-                if "INSERT INTO semantic_core" in s:
-                    conn.inserts += 1
-                elif "UPDATE semantic_core" in s and "retired" in s:
-                    conn.retired.append(params[0] if params else None)
-                self._last = s
-
-            def fetchall(self):
-                if "FROM semantic_core" in getattr(self, "_last", ""):
-                    return [(r[0], r[1]) for r in conn.rows]
-                return []
-
-        return _Cur()
-
-    def commit(self):
-        pass
-
-    def rollback(self):
-        pass
+from conftest import NullConn
 
 
 class _Client:
@@ -93,7 +54,7 @@ def _feed(k, actual, was_correct, n=10, start=0):
 
 def test_axiom_that_went_stale_is_retired():
     """The seed-42 case: true when written, false after the rule changed."""
-    conn = _Conn([("ax1", "RULE: pending -> FILE")])
+    conn = NullConn([("ax1", "RULE: pending -> FILE")])
     client = _Client("FILE")          # the stored rule still answers FILE
     k = _kernel(conn, client)
     _feed(k, actual="DEFER", was_correct=False)   # regime is now DEFER
@@ -103,7 +64,7 @@ def test_axiom_that_went_stale_is_retired():
 
 def test_axiom_that_is_still_true_is_kept():
     """Re-validation must not churn through rules that are still earning."""
-    conn = _Conn([("ax1", "RULE: pending -> DEFER")])
+    conn = NullConn([("ax1", "RULE: pending -> DEFER")])
     client = _Client("DEFER")
     k = _kernel(conn, client)
     _feed(k, actual="DEFER", was_correct=False)   # agent wrong, rule right
@@ -113,7 +74,7 @@ def test_axiom_that_is_still_true_is_kept():
 
 def test_no_retirement_without_enough_recent_evidence():
     """Thin evidence must not retire a rule; absence of proof is not proof."""
-    conn = _Conn([("ax1", "RULE: pending -> FILE")])
+    conn = NullConn([("ax1", "RULE: pending -> FILE")])
     client = _Client("FILE")
     k = _kernel(conn, client)
     _feed(k, actual="DEFER", was_correct=False, n=3)   # below min_items
@@ -122,7 +83,7 @@ def test_no_retirement_without_enough_recent_evidence():
 
 
 def test_revalidation_is_a_noop_when_disabled():
-    conn = _Conn([("ax1", "RULE: pending -> FILE")])
+    conn = NullConn([("ax1", "RULE: pending -> FILE")])
     client = _Client("FILE")
     k = EigenMemoryKernel(conn, client, model="m", labels=["DEFER", "FILE"],
                           rng_seed=0, retire_stale_axioms=False)
@@ -147,7 +108,7 @@ def test_llm_failure_does_not_retire():
         def create(self, **kw):
             raise RuntimeError("model unavailable")
 
-    conn = _Conn([("ax1", "RULE: pending -> FILE")])
+    conn = NullConn([("ax1", "RULE: pending -> FILE")])
     k = _kernel(conn, _Boom())
     _feed(k, actual="DEFER", was_correct=False)
     k.revalidate_axioms()
@@ -163,7 +124,7 @@ def test_retiring_frees_the_direction_for_recrystallization():
     so leaving the direction consumed would retire the wrong rule and then
     forbid the right one, which is worse than not retiring at all.
     """
-    conn = _Conn([("ax1", "RULE: pending -> FILE")])
+    conn = NullConn([("ax1", "RULE: pending -> FILE")])
     client = _Client("FILE")
     k = _kernel(conn, client)
     v = np.zeros(8)
@@ -181,7 +142,7 @@ def test_retiring_frees_the_direction_for_recrystallization():
 
 def test_retired_axioms_are_not_reinjected():
     """Retirement must actually remove the rule from the injection path."""
-    conn = _Conn([("ax1", "RULE: pending -> FILE")])
+    conn = NullConn([("ax1", "RULE: pending -> FILE")])
     client = _Client("FILE")
     k = _kernel(conn, client)
     _feed(k, actual="DEFER", was_correct=False)

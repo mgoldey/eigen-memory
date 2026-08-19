@@ -6,7 +6,7 @@ import numpy as np
 from openai import OpenAI
 import psycopg2
 
-from .memory_kernel import EigenMemoryKernel
+from .memory_kernel import EigenMemoryKernel, KernelConfig
 
 try:
     from src.config import OLLAMA_BASE_URL, EMBEDDING_MODEL
@@ -136,12 +136,18 @@ class AgenticMemoryLoop:
     static_context with retrieval off is an Oracle arm.
     """
 
-    def __init__(self, db_string, openai_client=None, *, model="gemma3:4b",
+    def __init__(self, db_string=None, openai_client=None, *, db_conn=None,
+                 model="gemma3:4b",
                  thought_model="gemma3:4b", enable_retrieval=True,
                  enable_eigen_memory=True, labels=None, static_context="",
                  extra_body=None, retrieval_k=3, recency_rerank=False,
                  axiom_replaces_exemplars=False, kernel_kwargs=None):
-        self.conn = psycopg2.connect(db_string)
+        if db_conn is not None:
+            self.conn = db_conn
+        elif db_string is not None:
+            self.conn = psycopg2.connect(db_string)
+        else:
+            raise TypeError("provide db_string or db_conn")
         # Valid label set for this task (RED/BLUE/GREEN by default; e.g.
         # HUM/LOC/NUM for TREC). Used in both the prediction and surprise prompts.
         self.labels = labels or DEFAULT_LABELS
