@@ -22,7 +22,6 @@ build-backend = "hatchling.build"
 package = true
 
 [tool.pytest.ini_options]
-# scratch/ holds throwaway probes that hit a live Ollama; only tests/ is the suite.
 testpaths = ["tests"]
 markers = [
     "slow: measures a power curve by simulation; slower than a unit test",

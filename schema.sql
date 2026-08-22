@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS episodic_buffer (
     context_input TEXT,
     prediction TEXT,
     actual_outcome TEXT,
-    surprise_score FLOAT,           -- The "Loss" (0.0 to 1.0)
+    surprise_score FLOAT,           -- NLL of the true label (nats)
     embedding vector(768),         -- Situation vector
     was_correct BOOLEAN,            -- Outcome: did the agent's prediction match?
     model_state_hash VARCHAR(64),   -- Version control for agent logic

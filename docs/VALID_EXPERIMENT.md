@@ -1,7 +1,7 @@
 # The Experiment That *Could* Validate Eigen-Memory
 
 The experiment in this repo cannot demonstrate the hypothesis (see
-[../FINDINGS.md](../FINDINGS.md)). This document specifies one that can. It is a design, not a
+[FINDINGS.md](FINDINGS.md)). This document specifies one that can. It is a design, not a
 run — included to show that the negative result is understood, not hand-waved.
 
 ## What the original task gets wrong (recap)

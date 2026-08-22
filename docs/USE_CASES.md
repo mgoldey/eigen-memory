@@ -7,7 +7,7 @@
 
 The experiment this document was written against is a negative result: on the
 number-classification task, compressing failures into "axioms" did not beat plain retrieval
-(see [../FINDINGS.md](../FINDINGS.md)). This document is the constructive flip side — *given why it
+(see [FINDINGS.md](FINDINGS.md)). This document is the constructive flip side — *given why it
 lost, where would it win?* The answer follows directly from the failure analysis.
 
 ## The principle
@@ -154,6 +154,6 @@ is false — where every instance is effectively its own isolated fact (the numb
 the rule is real but invisible to the embedding (also the number-game). Knowing *which* world
 you're in, before reaching for the mechanism, is the whole game.
 
-See also: [FINDINGS.md](../FINDINGS.md) (why it lost here), [THEORY.md](THEORY.md) (the corrected
+See also: [FINDINGS.md](FINDINGS.md) (why it lost here), [THEORY.md](THEORY.md) (the corrected
 mechanism and the two-statistic regime map), [VALID_EXPERIMENT.md](VALID_EXPERIMENT.md)
 (how to test it fairly), [PRIOR_ART.md](PRIOR_ART.md) (the lineage).

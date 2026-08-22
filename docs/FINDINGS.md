@@ -36,7 +36,7 @@ that isolates *why* the idea doesn't win — not a victory lap.
 | Control_RAG (retrieval) | 0.60 | 0.46 |
 | Treatment_Eigen (retrieval + axioms) | 0.60 | **0.55** |
 
-![Learning curve](figures/learning_curve.png)
+![Learning curve](../figures/learning_curve.png)
 
 **Read the error bands, not the lines.** Treatment_Eigen's cumulative accuracy (0.55) edges out
 RAG (0.46) and Baseline (0.47) by ~9 points — but the ±1 std bands of all three arms **overlap
@@ -120,7 +120,7 @@ document are from the **old** kernel and are kept as the record of what it produ
 
 ### Memory cost
 
-![Memory cost](figures/memory_cost.png)
+![Memory cost](../figures/memory_cost.png)
 
 Eigen stores strictly more than RAG — every episode RAG keeps, **plus** the crystallized axioms
 (~15–20 per run) and their eigenvectors. So Eigen pays a higher memory and token cost for, here,

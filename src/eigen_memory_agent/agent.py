@@ -124,7 +124,7 @@ def parse_prediction(raw, labels):
 
 
 def clean_prediction(raw, labels):
-    """parse_prediction without the fallback flag (back-compat)."""
+    """Extract the predicted label from raw model output."""
     return parse_prediction(raw, labels)[0]
 
 
@@ -439,5 +439,4 @@ class AgenticMemoryLoop:
         return (ctx_str if ctx_str else "No relevant memories found."), nn_vec
 
     def run(self, user_query):
-        # Implementation of single-run legacy-compat if needed
         return self.run_batch([user_query])[0][0]

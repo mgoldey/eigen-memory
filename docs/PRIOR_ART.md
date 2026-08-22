@@ -101,7 +101,7 @@ method — and avoid implying otherwise.
 This is the crux for the experiment. The honest, field-wide picture: gains from elaborate
 agent-memory schemes over a well-tuned retrieval (RAG) baseline are **frequently modest and
 task-dependent**, and strong simple baselines often close most of the gap. This project's own
-result is a small, local data point in that broader pattern — see [FINDINGS.md](../FINDINGS.md).
+result is a small, local data point in that broader pattern — see [FINDINGS.md](FINDINGS.md).
 
 ## One-line positioning for the README
 
