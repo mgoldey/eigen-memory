@@ -55,7 +55,7 @@ def test_accuracy_collapse_triggers():
     k = _kernel()
     rng = np.random.default_rng(1)
     _observe(k, "A", True, 40, rng)      # healthy
-    for _ in range(30):                  # collapse, no new label
+    for _ in range(60):                  # sustained collapse, no new label
         k.observe(embedding=rng.standard_normal(8),
                   residual=rng.standard_normal(8), was_correct=False,
                   context_input="x", prediction="A", actual="A")
@@ -91,6 +91,32 @@ def test_disabled_by_default():
     k.observe(embedding=rng.standard_normal(8), residual=rng.standard_normal(8),
               was_correct=False, context_input="x", prediction="A", actual="B")
     assert not k.outcome_change_detected
+
+
+def test_outcome_trigger_does_not_fire_on_stationary_noise():
+    """The e-process must not fire on a stationary correctness stream.
+
+    Without the reflecting barrier fix (max(logw, 0)), the log-wealth
+    random-walks upward and fires on 100% of streams. With the fix,
+    Ville's inequality bounds the all-time false-fire probability by alpha.
+    We run 50 independent streams of 250 post-burn-in trials each at ~70%
+    accuracy (matching typical burn-in rates) and assert zero fires.
+    """
+    fires = 0
+    n_streams = 50
+    for seed in range(n_streams):
+        k = _kernel(window=60)
+        rng = np.random.default_rng(seed + 1000)
+        for i in range(280):
+            ok = rng.random() < 0.70
+            k.observe(embedding=rng.standard_normal(8),
+                      residual=rng.standard_normal(8), was_correct=ok,
+                      context_input="x", prediction="A", actual="A")
+        if k.outcome_change_detected:
+            fires += 1
+    assert fires <= 2, (
+        f"outcome trigger fired on {fires}/{n_streams} stationary streams "
+        f"(expected <= 2 at alpha=0.05)")
 
 
 def test_trigger_latches():

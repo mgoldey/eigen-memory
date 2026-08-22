@@ -33,7 +33,7 @@ experiments, and honest evaluation on a problem with no known solution. It shows
 
 - **Research engineering.** A two-file core (`agent.py` + `memory_kernel.py`, ~1500 lines)
   that implements contrastive PCA over retrieval residuals, permutation-calibrated gating,
-  e-process change detection, and axiom lifecycle management. 67 tests, including an
+  e-process change detection, and axiom lifecycle management. 68 tests, including an
   [executable theory](tests/test_kernel_theory.py) where every mathematical claim runs as
   a test case.
 
@@ -82,11 +82,12 @@ Four experiments, each designed to test a different failure mode.
 | 1 | **Number-game** | hidden arithmetic rule (embedding-invisible) | tie — correctly: no memory can help when embeddings can't encode the rule |
 | 2 | **TREC** | question-type classification (embedding-visible) | RAG wins — one retrieved example already saturates |
 | 3 | **Label-flip** | purpose-built polarity task, 4 seeds | tie — the 4B model follows a pasted rule worse than it copies a neighbor |
-| 4 | **Rule-Shift** | rule flips mid-run, 12B model, 5 seeds | **+0.242** after rebuild (pre-registered run scored +0.078 vs +0.10 bar) |
+| 4 | **Rule-Shift** | rule flips mid-run, 12B model, 5 seeds | **+0.242 in-sample** after rebuild (pre-registered run scored +0.078 vs +0.10 bar) |
 
 **What works.** When the underlying rule changes mid-stream — the scenario retrieval
-can't handle — the system detects the shift (5/5 seeds), writes a correct rule where it
-fires (3/5 seeds), and scores 1.000 accuracy on `request`-class items. The two non-firing
+can't handle — the rebuilt outcome-stream detector catches the shift (5/5 seeds), writes
+a correct rule where it fires (3/5 seeds), and scores 1.000 accuracy on `request`-class
+items. The two non-firing
 seeds wrote nothing rather than something wrong — the detector correctly waited for
 evidence that never arrived within the trial window. Zero false fires across all four
 experiments.
@@ -180,7 +181,7 @@ simulate.py                     # number-game / TREC experiment
 run_flip_experiment.py          # 4-arm label-flip experiment
 run_shift_experiment.py         # 5-arm Rule-Shift experiment (incl. recency kill arm)
 
-tests/                          # 67 tests, including the executable theory
+tests/                          # 68 tests, including the executable theory
 scripts/analysis/               # gate calibration, guardrails, ablations, plotting
 results/                        # every number in the docs traces to a committed artifact
 docs/                           # theory, task design, prior art, blog post

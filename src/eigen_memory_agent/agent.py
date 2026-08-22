@@ -7,6 +7,7 @@ from openai import OpenAI
 import psycopg2
 
 from .memory_kernel import EigenMemoryKernel, KernelConfig
+from .parsing import parse_prediction, clean_prediction
 
 try:
     from src.config import OLLAMA_BASE_URL, EMBEDDING_MODEL
@@ -99,33 +100,6 @@ def _surprise_messages(query, labels=DEFAULT_LABELS, context=""):
     ]
 
 
-def parse_prediction(raw, labels):
-    """Extract the predicted label from a raw CoT response.
-
-    Returns (label, used_fallback). Take the last non-empty line stripped of
-    punctuation and markdown; if it isn't a valid label, fall back to the LAST
-    word-boundary occurrence of any label in the text. Last, not first: CoT
-    responses often restate the option list before deciding, so the earliest
-    occurrence just re-inherits label-list order (the old RED bias in a new
-    coat). Word-boundary, so "FILE" cannot match "PROFILE". Callers should
-    track the fallback rate — it fires mostly on truncated responses, and
-    truncation frequency varies with context length, i.e. by arm.
-    """
-    lines = [ln.strip() for ln in raw.strip().splitlines() if ln.strip()]
-    p = re.sub(r"[^A-Z]", "", lines[-1].upper()) if lines else "ERROR"
-    if p in labels:
-        return p, False
-    hits = [
-        (m.start(), lab)
-        for lab in labels
-        for m in re.finditer(rf"\b{re.escape(lab)}\b", raw.upper())
-    ]
-    return (max(hits)[1] if hits else p), True
-
-
-def clean_prediction(raw, labels):
-    """Extract the predicted label from raw model output."""
-    return parse_prediction(raw, labels)[0]
 
 
 class AgenticMemoryLoop:
@@ -199,6 +173,7 @@ class AgenticMemoryLoop:
         self.embed_failures = 0
         self.nll_probes = 0
         self.nll_missing = 0
+        self.logprob_missing = 0
 
     def _embed(self, text):
         try:
@@ -322,20 +297,16 @@ class AgenticMemoryLoop:
                     if s_pred == MISSING_TOKEN_NLL:
                         self.nll_missing += 1
                 else:
-                    # Fallback to Embedding Surprise if logprobs missing
-                    v_pred = self._embed(pred_label)
-                    v_out = self._embed(outcome)
-                    s_pred = (
-                        (1 - float(np.dot(v_pred, v_out))) * 5.0
-                        if v_pred is not None and v_out is not None
-                        else 2.0
-                    )
+                    # No logprobs returned — skip the write rather than
+                    # fabricating a surprise score from uncalibrated proxies.
+                    s_pred = 0.0
+                    self.logprob_missing += 1
 
                 predictive_surprises.append(s_pred)
 
             except Exception as e:
                 print(f"Surprise Eval Error: {e}")
-                s_pred = 2.0 # Manual high surprise fallback
+                s_pred = 0.0  # skip the write — fabricating surprise hides bugs
                 predictive_surprises.append(s_pred)
 
             # Store in Episodic Buffer if either Salient (Perceptual) or Surprising

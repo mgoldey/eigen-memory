@@ -351,13 +351,13 @@ pre-registered decision is next. But the mechanism's full loop — mistakes → 
 one legible sentence → exemplars retired → near-oracle accuracy — has now happened outside a
 thought experiment.
 
-### The replication: the bar not cleared
+### The replication: a miss that located the real bottleneck
 
-Four more seeds ran, and the pre-registered endpoint **missed**. Pooled over 450 paired
+Four more seeds ran, and the pre-registered endpoint missed. Pooled over 450 paired
 held-out items: Eigen 0.658 vs the recency kill-arm 0.580 — Δ = +0.078 against the +0.10
 bar. The direction is real (89-vs-54 discordant pairs, p = 0.002), but I set an effect-size
 bar precisely so a significant-but-small pooled number couldn't be dressed up as a win, and
-it did its job. Verdict: miss.
+it did its job. Verdict: miss — but a miss with an unusually clean decomposition.
 
 The decomposition is unusually clean, because the architecture leaves no partial credit.
 The gate fired on **one seed in five**. On that seed, treatment beat the kill arm by +0.389
@@ -576,19 +576,21 @@ precision survives. The pre-registerable claim: *there is a disagreement rate ab
 compressed rules beat copying even with no shift at all* — compression as denoising. That
 experiment is queued behind the ungated-trigger ablation the replication's miss motivated.
 
-I set out to advertise a mechanism and ended up with a measured boundary — and then, on the
-far side of it, a first live win: **compress into weights when your model is small; compress
-into sentences when your model can read; break ties with time, because stale memories retrieve
-perfectly and answer wrongly — and either way, let surprise decide what's worth keeping, and
-let the eigenvalue earn the write.**
+What survived every revision — the original theory disproved, three diagnostic hypotheses
+overturned, five silent bugs found — is the mechanism itself: detect structure in errors,
+compress it into a sentence, retire the sentence when it stops being true. Every claim about
+*why detection fails* had to be replaced; the claim about *what happens when detection
+succeeds* held from the first seed to the last.
+
+The one-line version: **compress into weights when your model is small; compress into
+sentences when your model can read.**
 
 ---
 
-*The repo: a theory doc where every claim is an executable test, the planted-world simulations,
-the guardrail scripts, the corrected kernel, and the full experiment. Lineage:
-[Titans](https://arxiv.org/abs/2501.00663) (surprise-gated test-time memory — the inspiration),
+*Lineage: [Titans](https://arxiv.org/abs/2501.00663) (surprise-gated test-time memory),
 [RepE](https://arxiv.org/abs/2310.01405) (PCA over contrastive differences),
 [cPCA](https://arxiv.org/abs/1709.06716) (target-vs-background spectra),
 [BBP 2005](https://arxiv.org/abs/math/0403022) (the detectability edge), and the
-verbal-consolidation line (Reflexion, Generative Agents, ExpeL) this hopes to give a
-rate-distortion theory.*
+verbal-consolidation line (Reflexion, Generative Agents, ExpeL). The repo includes a theory
+doc where every claim is an executable test, the planted-world simulations, the guardrail
+scripts, the corrected kernel, and the full experiment ledger.*

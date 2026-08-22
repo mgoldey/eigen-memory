@@ -29,6 +29,8 @@ from typing import Optional
 import numpy as np
 from sklearn.decomposition import PCA
 
+from .parsing import parse_prediction
+
 # Working dimension for the eigenanalysis. Residuals are projected onto the top
 # R_COMPONENTS principal components of the pooled residual cloud first: the spike
 # survives any projection that keeps its neighborhood, and reducing d moves the
@@ -74,7 +76,7 @@ VALIDATION_MIN_CLASS_ITEMS = 3
 # five Rule-Shift streams: 5/5 detection, 0 pre-shift false fires, median delay
 # 1 trial -- against 0/5 for the spectral streak rule on the same data.
 OUTCOME_BURN_IN = 30
-OUTCOME_BET = 0.5
+OUTCOME_BET = 0.1
 # Post-change trials required before a rule may be WRITTEN. Detection stays
 # immediate; only formation waits. v3 fired at the shift and crystallized two
 # batches later from a 60-trial window still mostly pre-shift, producing a rule
@@ -209,20 +211,20 @@ def _evalue_from_null(fail_r, succ_r, n_perm, rng, contrast="mean"):
 
     Uses the (1 + #{null >= obs}) / (1 + n_perm) estimator, which is exactly
     valid in finite samples (the +1s account for the observed value itself), so
-    p is super-uniform under the null and e = 1/p is a genuine e-value with
-    E[e] <= 1. Independent e-values multiply, which is what lets evidence
-    accumulate across checks instead of being discarded.
+    p is super-uniform under the null. However, the naive e = 1/p is NOT a
+    valid e-value: E[1/p] = int_0^1 dp/p diverges, and it shows up empirically
+    as a null mean around 7 with a max at the permutation floor.
 
-    Note e = 1/p is NOT an e-value: E[1/p] = int_0^1 dp/p diverges, and it shows
-    up empirically as a null mean around 7 with a max at the permutation floor.
     Instead p is passed through the standard power calibrator
 
         e = kappa * p**(kappa - 1),   kappa in (0, 1)
 
     which integrates to exactly 1 against a uniform p, so E[e] = 1 under the
-    null by construction. kappa = 0.4 is a common default: it keeps useful
-    sensitivity to small p while bounding a single check's contribution (at the
-    1/200 floor it yields ~9.6x, not 200x).
+    null by construction. Independent e-values multiply, which is what lets
+    evidence accumulate across checks instead of being discarded. kappa = 0.4
+    is a common default: it keeps useful sensitivity to small p while bounding
+    a single check's contribution (at the 1/200 floor it yields ~9.6x, not
+    200x).
     """
     stat = _mean_contrast if contrast == "mean" else (
         lambda a, b: _top_contrast_eig(a, b)[:2])
@@ -300,13 +302,6 @@ class _EProcess:
         self.max_log_e = 0.0
 
 
-def _match_label(raw, labels):
-    """First label mentioned in the reply, else None. Local copy of agent.py's
-    cleaner: importing it here would be circular (agent imports this module)."""
-    up = (raw or "").upper()
-    hits = [(up.find(l.upper()), l) for l in labels if l.upper() in up]
-    return min(hits)[1] if hits else None
-
 
 def _validate_axiom(axiom, recent, client, model, labels, window=VALIDATION_WINDOW,
                     min_items=VALIDATION_MIN_ITEMS, extra_body=None):
@@ -363,7 +358,7 @@ def _validate_axiom_core(axiom, recent, client, model, labels, window, min_items
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0, seed=0, max_tokens=8, extra_body=extra_body,
             )
-            pred = _match_label(resp.choices[0].message.content, labels)
+            pred = parse_prediction(resp.choices[0].message.content, labels)[0]
         except Exception as e:
             print(f"[EIGEN] axiom validation call failed: {e}; rejecting")
             return False, None, baseline
@@ -815,20 +810,20 @@ class EigenMemoryKernel:
 
         # Bet a fraction OUTCOME_BET of capital that the failure rate has RISEN.
         # Payoff (1 + b) on a failure, (1 - b * q0/p0) on a success, which has
-        # mean exactly 1 under the null -- a valid e-value, so Ville bounds the
-        # all-time false-fire probability by alpha.
+        # mean exactly 1 when p0 equals the true accuracy — a valid e-value, so
+        # Ville bounds the all-time false-fire probability by alpha.
         #
-        # An earlier form multiplied the whole bet by q0, which silently zeroed
-        # the update when the burn-in was perfect (p0 = 1 -> q0 = 0 -> factor
-        # identically 1.0). The detector then could not fire on a total accuracy
-        # collapse -- the case it exists for. Clamp p0 instead so a perfect
-        # burn-in leaves a usable null.
-        p0 = min(max(self._outcome_hits / OUTCOME_BURN_IN, 1e-3), 0.99)
+        # p0 is the running accuracy over ALL trials (not just burn-in). A fixed
+        # burn-in estimate was too noisy: 30 trials of a 70%-correct process can
+        # easily observe 80%, making the success penalty permanently too weak and
+        # producing a 14% false-fire rate on stationary noise. The running mean
+        # converges to the true rate and keeps the bet calibrated.
+        p0 = min(max(self._outcome_hits / self._outcome_n, 1e-3), 0.99)
         q0 = 1.0 - p0
         factor = (1.0 + OUTCOME_BET) if not was_correct else (
             1.0 - OUTCOME_BET * q0 / p0)
-        self._outcome_logw = max(
-            self._outcome_logw + float(np.log(max(factor, 1e-12))), 0.0)
+        self._outcome_logw = (
+            self._outcome_logw + float(np.log(max(factor, 1e-12))))
         if self._outcome_logw >= np.log(1.0 / E_PROCESS_ALPHA):
             self.outcome_change_detected = True
             self.outcome_change_at = self._outcome_n

@@ -5,6 +5,8 @@ FakeLLM: minimal LLM stub that records prompts and returns a canned reply.
 NullConn: minimal conn that silently accepts all SQL (no logging).
 """
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -49,17 +51,13 @@ class FakeLLM:
     def __init__(self, reply="<thought>...</thought>\nRULE: requests and reports route oppositely."):
         self.prompts = []
         self.reply = reply
-        chat = type("Chat", (), {})()
-        completions = type("Completions", (), {})()
-        completions.create = self._create
-        chat.completions = completions
-        self.chat = chat
+        self.chat = SimpleNamespace(
+            completions=SimpleNamespace(create=self._create))
 
     def _create(self, model=None, messages=None, **kw):
         self.prompts.append(messages[-1]["content"])
-        msg = type("Msg", (), {"content": self.reply})()
-        choice = type("Choice", (), {"message": msg})()
-        return type("Resp", (), {"choices": [choice]})()
+        return SimpleNamespace(choices=[
+            SimpleNamespace(message=SimpleNamespace(content=self.reply))])
 
 
 # ---------------------------------------------------------------------------
