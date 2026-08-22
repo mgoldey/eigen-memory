@@ -465,7 +465,7 @@ class EigenMemoryKernel:
         self.consumed_directions = []
 
         # Telemetry: (lambda1, permutation edge) per check, and top-3 eigenvalue
-        # shares per check for the spectrum heatmap in plot_results.py.
+        # shares per check for the spectrum heatmap in scripts/analysis/plot_results.py.
         self.detectability_history = []
         # Sequential (e-value) trigger. Off by default so every committed result
         # stays reproducible; the streak rule remains the as-run mechanism.

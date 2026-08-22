@@ -1,6 +1,6 @@
 """The outcome trigger: detect the rule shift from correctness, not geometry.
 
-Measured on the five persisted Rule-Shift streams (outcome_detector.py):
+Measured on the five persisted Rule-Shift streams (scripts/analysis/outcome_detector.py):
 
   detector            fires  pre-shift false fires  median delay
   spectral (streak)   0/5*   0                      --

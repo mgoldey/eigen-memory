@@ -148,7 +148,7 @@ First outing of the rebuilt kernel, on the two old tasks, with a falsifiable pre
   stay closed. It did — **zero axioms**, where the old kernel emitted 15–20.
 - **TREC, 120 trials** (question-type rule, embedding-visible): a real axis should clear the
   edge. It did — exactly one axiom. Re-verified end-to-end on the final, fully-debugged code
-  (`run_trec_verify.py`, archived in `results/static/trec_verify.42.json`): one axiom, strength 1.13, zero
+  (`scripts/analysis/run_trec_verify.py`, archived in `results/static/trec_verify.42.json`): one axiom, strength 1.13, zero
   missing-token probes — though a **9.2% parse-fallback rate** on this run, well above the ~1%
   the flip runs show, so a tenth of the labels came from the fallback parser rather than a
   clean parse — and the rule is true:
@@ -162,7 +162,7 @@ architecture exists to produce.
 
 And the refusal side is now measured, not asserted. A synthetic ROC drives the *actual*
 kernel over planted rank-1 contrasts at controlled multiples of its own noise edge
-(`gate_roc.py`): false-positive rate **0.00** at pure noise (the permutation edge alone leaks
+(`scripts/analysis/gate_roc.py`): false-positive rate **0.00** at pure noise (the permutation edge alone leaks
 the predicted ~5%; the stability check mops it to zero), detection at 1× the edge, full-gate
 firing from ~8×. The binding constraint isn't the eigenvalue edge at all — it's **stability**:
 under realistic noise, the estimated direction only reproduces across checks at |cos| > 0.95
@@ -205,7 +205,7 @@ the very arm under test. **Bug five:** the surprise probe required the whole lab
 token, and the tokenizer splits ESCALATE into `ES`-something — so for two of three classes,
 "surprise" had quietly become a constant *again* (instance number three of the same bug
 class). Verified live before fixing: NLLs of 7.0/0.01/7.0 became 4.57/0.01/11.55 after a
-one-line prefix match. The compromised run is archived in `results_prefix_bug/`, because the
+one-line prefix match. The compromised run is archived in `results/archived_prefix_bug/`, because the
 archaeology *is* the project.
 
 **Act two: the corrected run** (4 seeds, temperature 0, health counters in every artifact —

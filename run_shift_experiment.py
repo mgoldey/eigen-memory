@@ -155,7 +155,7 @@ def run_arm(name, conn, trials, heldout, *, retrieval, eigen, static_context="",
         # Item-level trial correctness, not just the two means. The gate's
         # fail/succ split is built from exactly this signal, so without it an
         # offline gate re-analysis has to RECONSTRUCT which trials failed --
-        # which is what ungated_ablation.py does with its stale-copier proxy,
+        # which is what scripts/analysis/ungated_ablation.py does with its stale-copier proxy,
         # and why that ablation can show the signal was recoverable without
         # establishing whether the live gate's miss is a featurization problem
         # or merely a noisy correctness signal. Persisting it makes the two

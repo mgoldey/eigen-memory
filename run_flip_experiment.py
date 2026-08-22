@@ -1,7 +1,7 @@
 """The C1-and-C3 experiment (docs/C1_C3_TASK.md), demonstration scale.
 
 Protocol (single seed; Guardrail 1 must PASS for the seed first — run
-guardrail_flip.py):
+scripts/analysis/guardrail_flip.py):
 
   Train phase (memory arms only): N_TRAIN flip messages with feedback; memory built.
   Test phase (all arms): N_TEST held-out messages (disjoint objects, contexts,

@@ -148,7 +148,7 @@ are measurable with just the generator and the embedding model — no LLM, no ag
   > within-split measurement was an artifact. The general lesson (C1 ⇒ ¬C3 on static tasks:
   > whatever attribute generalizes across the split dominates cross-split similarity, and
   > that's the rule attribute) is formalized in [NEXT_EXPERIMENT.md](NEXT_EXPERIMENT.md).
-  > `guardrail_flip.py` now measures under protocol conditions and writes
+  > `scripts/analysis/guardrail_flip.py` now measures under protocol conditions and writes
   > `results/flip/guardrail.flip.<seed>.json` for the aggregator.
 
 Do **not** substitute a variance-share check for the m measurement: the simulation showed a B
@@ -158,7 +158,7 @@ density, so it must be measured at the protocol's buffer size.
 
 If either gate fails, the task is dead on arrival. This 30-minute check gates everything else.
 
-**What tuning m actually took (measured with `guardrail_flip.py`, embeddinggemma, seed 42).**
+**What tuning m actually took (measured with `scripts/analysis/guardrail_flip.py`, embeddinggemma, seed 42).**
 Four generator designs failed this gate before one passed — the record is the design lesson:
 
 | Generator design | probe(B) | m | verdict |
@@ -298,7 +298,7 @@ Oracle 0.467, RAG 0.533, Eigen 0.356; the kernel appeared to crystallize one cor
 axiom. A review pass then found two silent bugs (full-CoT stored as axioms and injected into
 the Treatment arm; multi-token labels flattening the surprise probe to a constant for 2 of 3
 classes) plus the guardrail measurement error documented above. Archived in
-`results_prefix_bug/` as the record.
+`results/archived_prefix_bug/` as the record.
 
 **Corrected run (2026-07-16, 4 seeds {42, 2, 18, 23}, temperature 0, health telemetry).**
 Held-out means ± std: Baseline 0.289 ± 0.048, Oracle 0.411 ± 0.103, **RAG 0.600 ± 0.101**,

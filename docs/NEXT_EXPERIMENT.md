@@ -89,7 +89,7 @@ Candidate order (stop at first pass): gemma3:12b → qwen3.5:9b → qwen3.5:27b 
 If nothing local passes, that is itself the publishable boundary: "below ~X B parameters,
 exemplar-copying dominates rule-following, and no rule-memory architecture can pay."
 
-> **Amendment (2026-07-16, after the first two RFμ runs — `run_rfmu.py`,
+> **Amendment (2026-07-16, after the first two RFμ runs — `scripts/analysis/run_rfmu.py`,
 > `results/calibration/rfmu.<model>.json`).** The C condition's premise broke on contact: with a global-polarity
 > rule, 5 correctly-labeled exemplars are enough for a strong model to *induce* the rule, so
 > C measures few-shot induction, not nearest-neighbor copying — gemma4-8B scored C = 0.933
@@ -152,7 +152,7 @@ post-shift adaptation trials → freeze → 90 held-out post-shift items. 5 seed
 - **G4**: every fired axiom scored against the planted post-shift rule *before* unblinding
   accuracy.
 
-> **Amendment (2026-07-17, pre-pilot, from the G1/G2 measurement — guardrail_shift.py on 5
+> **Amendment (2026-07-17, pre-pilot, from the G1/G2 measurement — scripts/analysis/guardrail_shift.py on 5
 > seeds).** G1 passes everywhere (probe-AUC 0.980–0.989). Strict G2 **fails on every seed**
 > (aggregate copy_acc 0.500–0.644 vs ≤ 0.45) — and the per-row split shows the ≤ 0.45 bar
 > was an arithmetic oversight in this pre-registration, not a property of the data: only the
@@ -334,7 +334,7 @@ false-fire target. The stability and novelty gates are untouched by this amendme
   (16 checks × 10 trials, window 60), measured by simulation with the overlapping-window
   dependence included — consecutive windows share ~50/60 residuals, which correlates even
   noise directions and inflates the stable flag, so θ must absorb that; an analytical
-  threshold would be anti-conservative. Calibration: `gate_roc_v2.py` → `results/calibration/gate_roc_v2.json`
+  threshold would be anti-conservative. Calibration: `scripts/analysis/gate_roc_v2.py` → `results/calibration/gate_roc_v2.json`
   (v1 and v2 run paired on identical observation streams).
 
 **Integrity protocol.** The trigger came from live-seed telemetry, so this is a post-hoc
@@ -433,7 +433,7 @@ label-noise wedge, unchanged.
 
 ## 9. Ungated-trigger ablation protocol (2026-07-26, pre-registered) — RUN 2026-08-11
 
-Script: `ungated_ablation.py` (written box-idle, untested until Ollama is free). Per shut
+Script: `scripts/analysis/ungated_ablation.py` (written box-idle, untested until Ollama is free). Per shut
 seed {2, 18, 23, 7}: rebuild the end-of-run window (embeddings + stale-copier proxy for
 was_correct — a trial fails iff the similarity-nearest earlier trial's stored label ≠ its
 era-correct label; per-trial live correctness wasn't persisted, and this proxy reproduces
@@ -554,7 +554,7 @@ written to `episodic_buffer.was_correct` but never serialized. This is the only 
 unrecoverable input to the gate: residuals are deterministic from the trial text and can be
 rebuilt at will, which is exactly what the §9 ablation does.
 
-`gate_replay.py` consumes it. For a given seed it computes the end-of-run contrast statistic
+`scripts/analysis/gate_replay.py` consumes it. For a given seed it computes the end-of-run contrast statistic
 twice over identical featurization — once with the ablation's stale-copier proxy, once with
 the real split — and prints both beside the live run's own last check. The comparison is
 designed to separate the two candidate causes that §9 left entangled:
@@ -743,3 +743,60 @@ mechanism one.
 
 Artifacts: `results/shift/comparison_results.shift.v4.<seed>.json` ×5,
 `results/shift/outcome_detection.json`. Config: `run_shift_experiment.py --v4`.
+
+## 11. Open questions (roadmap)
+
+The Rule-Shift experiment consumed the old version of this list (the executor pre-test,
+the sample-size-aware stability threshold, and the recency kill arm all ran as pre-registered).
+What its miss opens up, in order:
+
+- ~~**The ungated-trigger ablation**~~ — **run 2026-08-11: correct on 4 of 4 shut seeds**
+  (pre-registered bar was ≥2). Forced to crystallize with no gate, every shut seed wrote a
+  rule mapping both polarities correctly. The signal was in the episodes and the estimator
+  missed it. Artifacts: `results/shift/ungated_ablation.<seed>.json`; details in §9.
+- ~~**Persist per-trial correctness**~~ — *done, and all four shut seeds replayed 2026-08-12.*
+  The harness writes `trial_correct`; `scripts/analysis/gate_replay.py` recomputes the gate statistic on the
+  real split versus the ablation's proxy over identical featurization. The one-seed answer
+  (seed 23: real labels don't rescue the gate ⇒ featurization is the bottleneck) **did not
+  generalize.** Across four seeds λ₁ is *identical* between replay and live run, so every ratio
+  difference is the permutation **edge** moving, not the signal — and on seed 18 the same λ₁
+  lands on opposite sides of an edge that differs 31% on identical data. **The gate isn't
+  clearly mis-featurized or mis-thresholded; it runs with no margin** (λ₁/edge on real labels
+  spans 0.78–1.28 across all four seeds), so outcomes turn on estimator variance. Seed 7
+  reached streak 2-of-3 on rerun against a committed run that never crossed the edge. Details: §9a.
+- **Stabilize the noise edge** — now the immediate item, ahead of featurization work. More
+  permutation draws, or a pooled/smoothed edge across checks instead of an independent estimate
+  each time. At these effect sizes a featurization improvement and a lucky edge draw are
+  currently indistinguishable, so this gates the next experiment rather than competing with it.
+- **Residual featurization** — the estimator contrasts embedding means (a deliberate
+  amendment: a covariance contrast is provably blind to this shift's *location* structure — see
+  `contrast_on` in `memory_kernel.py`). The open question is whether a *whitened* location
+  statistic — a shrinkage-regularized Fisher direction, which keeps the location sensitivity
+  the amendment requires — beats the unwhitened mean difference at n≈60, d≈768. Blocked on the
+  edge work above: not interpretable until a featurization change can be told apart from
+  estimator variance.
+- ~~**An anytime-valid sequential test**~~ — *built 2026-08-12 (`sequential_gate=True`, off by
+  default), and the result is a warning rather than a win.* Type-I control is genuine and
+  measured, and it fires where the streak rule cannot (seed 7: 0→1 axiom; seed 42: 1→2). But
+  **the rules it writes are worse**: three axioms across two seeds, every one with a wrong
+  branch, against the streak rule's one clean axiom. Cause: it fires *before the shift*. On
+  seed 42 the shift lands at batch 11 and the sequential gate fired at batch 7, writing an
+  accurate statement of the **pre-shift** rule that was false four batches later. The
+  3-consecutive requirement was acting as a delay that let the post-shift signal dominate —
+  a real function, not the pure conservatism it looked like. Details: §9b.
+- **Validate axioms before injection** — the gap §9b exposes: the crystallizer has no notion of
+  *when* a rule stopped being true, so on a non-stationary target firing faster produces
+  confidently stale rules. Scoring a candidate axiom against recent trials before injecting it
+  would make early firing safe instead of preventing it, and the §9 ablation (4/4 correct rules
+  when forced) suggests the accept rate would be usable.
+- **The label-noise wedge** — the third way to break copying (after geometry, which failed,
+  and time, which split): exemplar-copying inherits annotator noise one-for-one at
+  retrieval; a crystallized rule is a pooled majority-policy estimator, noise-free at
+  inference. Pre-registerable as a noise-rate sweep on the *static* task — reopening the
+  regime that the visible-to-embeddings ⇒ visible-to-retrieval result closed.
+
+Crystallization precision so far, scored blind against the planted rules — three axioms have
+ever fired across all experiments, so this is a count, not a rate: **TREC** 1 axiom, correct.
+**Flip** 1 axiom, half credit (it found the right axis but inverted the mapping). **Rule-Shift**
+1 axiom, legible and correct, with one stale clause a reviewer would veto — which is the
+auditability argument working.

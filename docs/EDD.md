@@ -40,6 +40,6 @@ We will use a synthetic dataset where the agent must classify numbers, but the r
 - **The Eigen-Spectrum**: A heatmap showing the evolution of the top 3 Eigenvectors in Group B.
 
 ## 6. Implementation References
-- **Agent Loop**: [src/eigen_memory_agent/agent.py](src/eigen_memory_agent/agent.py)
-- **Memory Kernel**: [src/eigen_memory_agent/memory_kernel.py](src/eigen_memory_agent/memory_kernel.py)
+- **Agent Loop**: [src/eigen_memory_agent/agent.py](../src/eigen_memory_agent/agent.py)
+- **Memory Kernel**: [src/eigen_memory_agent/memory_kernel.py](../src/eigen_memory_agent/memory_kernel.py)
 - **Simulation Script**: `simulate.py` (To be created)

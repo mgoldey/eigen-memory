@@ -140,7 +140,7 @@ examples**. The garbage and "just guess randomly" axioms observed in the real ru
 predicted signature of crystallizing below the detectability threshold, not a mystery about
 prompt quality.
 
-**Measured operating characteristic of the full gate (gate_roc.py, 2026-07-16).** Driving the
+**Measured operating characteristic of the full gate (scripts/analysis/gate_roc.py, 2026-07-16).** Driving the
 actual kernel over planted rank-1 contrasts at controlled multiples of its own permutation
 edge (n_fail ∈ {50, 100, 200}, 20 replicates/cell): full-gate false-positive rate **0.00** at
 pure noise (the edge alone leaks ~5% ≈ 1/21, exactly the max-over-20-permutations expectation;

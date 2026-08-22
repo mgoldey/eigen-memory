@@ -52,7 +52,7 @@ def _extract_nll(top_logprobs, true_label):
     token must be a PREFIX of the true label. The previous check required the
     full label inside one token, which silently returned MISSING_TOKEN_NLL for
     every item of a multi-token class — the third instance of this repo's
-    constant-surprise bug class (see FINDINGS.md). Label sets must therefore
+    constant-surprise bug class (see docs/FINDINGS.md). Label sets must therefore
     have distinct first tokens (RED/BLUE/GREEN, HUM/LOC/NUM,
     ESCALATE/FILE/DEFER all do).
 
@@ -195,7 +195,7 @@ class AgenticMemoryLoop:
         # 1.0 threshold sat BELOW chance, making the gate nearly write-everything.
         self.write_nll = math.log(len(self.labels))
         # Health counters, persisted into results by the experiment scripts so a
-        # degraded signal is loud instead of silently constant (see FINDINGS.md).
+        # degraded signal is loud instead of silently constant (see docs/FINDINGS.md).
         self.embed_failures = 0
         self.nll_probes = 0
         self.nll_missing = 0

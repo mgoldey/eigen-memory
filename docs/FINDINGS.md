@@ -3,7 +3,7 @@
 > Honest write-up of what the experiments actually showed. The number-game and TREC sections
 > are the mean of **2 seeds** (42, 7), 100 trials each, on a local `gemma3:4b` model; the
 > later flip section below is 4 seeds, and the Rule-Shift work (5 seeds, `gemma4:12b`) lives
-> in [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md).
+> in [NEXT_EXPERIMENT.md](NEXT_EXPERIMENT.md).
 
 ## TL;DR
 
@@ -64,9 +64,9 @@ varied prediction-error signal (`1.55, 4.62, 5.45, ...`).
 **Running count of the constant/corrupted-signal bug class, used consistently across these
 docs:** (1) flat 2.0 and (2) flat 7.0 here; (3) the prefix-match bug that flattened NLL for
 2 of 3 classes, and (4) the chain-of-thought-as-axiom bug — both found in the flip-era review
-and archived in [`results_prefix_bug/`](results_prefix_bug/). A fifth, the incomplete fix to
+and archived in [`results/archived_prefix_bug/`](../results/archived_prefix_bug/). A fifth, the incomplete fix to
 (4) that left trailing CoT in the stored axiom, was found in a 2026-08-10 audit — see
-[docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md) §6.
+[NEXT_EXPERIMENT.md](NEXT_EXPERIMENT.md) §6.
 
 **Lesson:** a sophisticated-looking pipeline can produce authoritative numbers while
 measuring a constant. The only way I caught it was instrumenting and *looking at the actual
@@ -79,7 +79,7 @@ No arm clearly learns the rule. Cumulative accuracy lands at ~0.47 (Baseline), ~
 toward mastery. RAG barely improved on no-memory at all, which is itself a signal: retrieval
 added almost nothing because the retrieved neighbors are not actually informative for an
 arithmetic rule. Eigen's slight edge is within noise and rests on 2 seeds; I would not claim it
-as real without the more powered experiment in [docs/VALID_EXPERIMENT.md](docs/VALID_EXPERIMENT.md).
+as real without the more powered experiment in [VALID_EXPERIMENT.md](VALID_EXPERIMENT.md).
 
 ### The agent talked itself into giving up — and that *is* the finding
 
@@ -107,7 +107,7 @@ some genuinely name the rule concepts (`prime`, `divisible`, `5`); others are mo
 right structure, but injection is noisy and unvalidated — a wrong or defeatist axiom poisons the
 context. Validating axioms before injection is listed in next steps.
 
-A later theory pass ([docs/THEORY.md](docs/THEORY.md)) explains the unevenness quantitatively:
+A later theory pass ([THEORY.md](THEORY.md)) explains the unevenness quantitatively:
 the kernel crystallized every batch on ~10 vectors in 768 dimensions — far below the spectral
 detectability threshold — so the "direction" behind each axiom was close to a random vector,
 and the contrast examples handed to the introspection prompt were effectively arbitrary. An LLM
@@ -135,7 +135,7 @@ suddenly starts helping. If RAG beats Baseline on such a task, the rig is sound 
 number-game's null was a substrate problem, not a bug.
 
 I wired in **TREC question classification** (behind `TASK=trec`; see
-[docs/DATASETS.md](docs/DATASETS.md)): short questions, a genuine hidden rule (the *type* of answer
+[DATASETS.md](DATASETS.md)): short questions, a genuine hidden rule (the *type* of answer
 a question asks for), classified into a 3-class subset `{HUM, LOC, NUM}`. Same agent loop, same
 surprise gating, same PCA kernel — only `src/dataset.py` changed.
 
@@ -161,7 +161,7 @@ Two things this shows, both more informative than the number-game null:
    (where RAG 0.46 ≈ Baseline 0.47), on TREC **RAG clearly beats no-memory** at nearly every batch
    (final 0.80 vs 0.75; at batch 40, 0.95 vs 0.65). This directly confirms the *rule is visible
    in embedding space* condition (**C1**) from
-   [docs/USE_CASES.md](docs/USE_CASES.md): when the rule lives in embedding space, retrieving similar
+   [USE_CASES.md](USE_CASES.md): when the rule lives in embedding space, retrieving similar
    past episodes genuinely helps. The experimental apparatus *can* detect a memory benefit.
 
 2. **Eigen still doesn't beat RAG — and here we can see why.** Despite 170 axiom-injections, the
@@ -205,7 +205,7 @@ of it into every Treatment context (sabotaging the arm under test), and the surp
 token matching failed on multi-token labels, flattening NLL to a constant for 2 of 3 classes —
 **the third instance of the constant-surprise bug class** this document exists to warn about.
 Both were verified live before fixing (NLLs 7.0/0.01/7.0 → 4.57/0.01/11.55 after a one-line
-prefix match). The compromised run is archived in `results_prefix_bug/`.
+prefix match). The compromised run is archived in `results/archived_prefix_bug/`.
 
 **The corrected run (4 seeds, temperature 0, health counters in every artifact):** held-out
 Baseline 0.289 ± 0.048, Oracle 0.411 ± 0.103, RAG 0.600 ± 0.101, Eigen 0.617 ± 0.106 — but
@@ -223,16 +223,16 @@ Three replicated findings:
    measured copying with the wrong queries. Measured
    under protocol conditions, cross-split neighbors match on the rule attribute itself
    (polarity 0.73–0.89) — making a rule embedding-visible makes it retrieval-visible, so the
-   "eigen window" was a measurement artifact. See [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md).
+   "eigen window" was a measurement artifact. See [NEXT_EXPERIMENT.md](NEXT_EXPERIMENT.md).
 3. **The zero axioms are calibrated behavior:** a synthetic ROC of the actual gate
-   (`gate_roc.py`) shows a 0.00 false-positive rate and full-gate firing only past ~8× the
+   (`scripts/analysis/gate_roc.py`) shows a 0.00 false-positive rate and full-gate firing only past ~8× the
    *noise edge* — the largest eigenvalue noise alone would produce, estimated by permutation.
    What binds is the check that the direction reproduces, not that edge. The flip task's
    residual failures are high-rank per-topic confusions — nothing rank-1 to find.
 
 Meanwhile the positive mechanism claim was re-verified on the final code: 120 TREC trials →
 exactly one axiom, and it is true (`results/static/trec_verify.42.json`). Full design and guardrail history:
-[docs/C1_C3_TASK.md](docs/C1_C3_TASK.md) and [docs/BLOG_POST.md](docs/BLOG_POST.md); raw data
+[C1_C3_TASK.md](C1_C3_TASK.md) and [BLOG_POST.md](BLOG_POST.md); raw data
 `results/flip/comparison_results.flip.<seed>.json` + aggregate.
 
 ## The real finding: the experiment cannot answer the question it asks
@@ -284,11 +284,11 @@ an experiment can't answer its question, and what the valid version looks like, 
 The full design of the experiment that *could* validate this approach — a hidden semantic rule
 over short texts, a held-out test phase with frozen memory, an equal-token-budget control arm,
 and a pre-registered decision rule — is written up in
-[docs/VALID_EXPERIMENT.md](docs/VALID_EXPERIMENT.md).
+[VALID_EXPERIMENT.md](VALID_EXPERIMENT.md).
 
 ## How this sits in the literature
 
-This architecture recombines three well-established ideas (see [docs/PRIOR_ART.md](docs/PRIOR_ART.md)):
+This architecture recombines three well-established ideas (see [PRIOR_ART.md](PRIOR_ART.md)):
 
 - **Surprise-gated storage** ← **Titans** (Behrouz et al. 2024) — the direct inspiration:
   surprise-gated, lossy, test-time memory, compressed here into legible rules instead of MLP
@@ -308,7 +308,7 @@ The first item on the old version of this list — *build a task where the rule 
 embedding-visible (C1) but copying still fails (C3)* —
 **was done**, and running it honestly proved such a static task cannot exist (making the rule
 visible to the embeddings makes it visible to retrieval too — above).
-The unified roadmap now lives in [docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md); the short
+The unified roadmap now lives in [NEXT_EXPERIMENT.md](NEXT_EXPERIMENT.md); the short
 version:
 
 - **The Rule-Shift experiment** — break copying with *time* instead of geometry: the rule
