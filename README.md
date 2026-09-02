@@ -79,16 +79,15 @@ Four experiments, each designed to test a different failure mode.
 
 | # | Experiment | What it tested | Outcome |
 |---|------------|---------------|---------|
-| 1 | **Number-game** | hidden arithmetic rule (embedding-invisible) | tie — correctly: no memory can help when embeddings can't encode the rule |
+| 1 | **Number-game** | hidden arithmetic rule (embedding-invisible) | tie — no memory can help when embeddings can't encode the rule |
 | 2 | **TREC** | question-type classification (embedding-visible) | RAG wins — one retrieved example already saturates |
 | 3 | **Label-flip** | purpose-built polarity task, 4 seeds | tie — the 4B model follows a pasted rule worse than it copies a neighbor |
 | 4 | **Rule-Shift** | rule flips mid-run, 12B model, 5 seeds | **+0.242 in-sample** after rebuild (pre-registered run scored +0.078 vs +0.10 bar) |
 
 **What works.** When the underlying rule changes mid-stream — the scenario retrieval
 can't handle — the rebuilt outcome-stream detector catches the shift (5/5 seeds), writes
-a correct rule where it fires (3/5 seeds), and scores 1.000 accuracy on `request`-class
-items. The two non-firing
-seeds wrote nothing rather than something wrong — the detector correctly waited for
+a correct rule where it fires (3/5 seeds), and scores 1.000 accuracy on the class the rule-shift redefines.
+The two non-firing seeds wrote nothing rather than something wrong — the detector correctly waited for
 evidence that never arrived within the trial window. Zero false fires across all four
 experiments.
 
@@ -120,9 +119,6 @@ Five bugs were found along the way — two made "surprise" a constant, one flatt
 2 of 3 classes, two injected raw chain-of-thought into the arm under test. A theory
 review disproved the project's original mechanism and replaced it with one where
 [every claim is an executable test](tests/test_kernel_theory.py).
-
-> *Compress into weights when your model is small. Compress into sentences when your model
-> can read.*
 
 Full narrative: **[docs/BLOG_POST.md](docs/BLOG_POST.md)**.
 Full experiment ledger: **[docs/NEXT_EXPERIMENT.md](docs/NEXT_EXPERIMENT.md)**.

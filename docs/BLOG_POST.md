@@ -1,14 +1,20 @@
 # Surprise, Compressed: A Lossy Agent Memory That Writes Its Own Rules
 
-*Titans showed that a memory which decides what to keep by measuring its own surprise can beat
-attention at scale — by compressing experience into neural weights. But Titans is an
-architecture you have to pretrain. This project asks whether a frozen, black-box model can get
-the same economics as a pure inference-time wrapper — with the compression target changed from
-weights to sentences.*
+*When an LLM's retrieval memory goes stale — because the rules changed, not because the
+examples are bad — this project detects the shift from the model's own error stream,
+compresses the new pattern into one English sentence, and scores +0.242 over retrieval on
+five seeds (in-sample — the pre-registered pipeline scored +0.078; the gap between those
+numbers is half the story). No fine-tuning, no gradient access — just a wrapper that watches
+what the model gets wrong and writes itself instructions. The path there took four
+experiments, five silent bugs, and two wrong diagnoses, and the documentation preserves all
+of it because the diagnostic work is the interesting part.*
+
+*This post is written in the order the work happened — pre-registrations in future tense,
+results resolving them in the next section.*
 
 ---
 
-## The idea: change what surprise compresses into
+## The lineage: what Titans gets right, and what it leaves on the table
 
 Google's **Titans** (Behrouz, Zhong & Mirrokni, [arXiv:2501.00663](https://arxiv.org/abs/2501.00663))
 is the cleanest recent statement of a very old principle: memory should be *lossy, and surprise
@@ -25,9 +31,8 @@ scale, past-surprise decay, forgetting) are meta-learned end-to-end during pretr
 is an architecture you train from scratch, not a bolt-on; a frozen GPT- or Gemma-class model
 can never have it.
 
-This project — a local rig with a 4B model, pgvector, and no training loop — asks whether a
-**frozen, black-box model** can get the same economics as a pure inference-time retrofit, and
-swaps the substrate while it's at it. The bet: an agent's surprising experiences don't have to
+This project — a local rig with a 4B model, pgvector, and no training loop — takes the same
+core idea and swaps the substrate. The bet: an agent's surprising experiences don't have to
 be compressed into weights nobody can read. They can be compressed into **rules** — short
 natural-language axioms the agent writes about its own failures, auditable by a human,
 portable across models, injectable into any context window.
@@ -89,7 +94,7 @@ produces *confident false rules*, injected into every future decision. The answe
 come from random matrix theory, and getting there required admitting the first version of the
 mechanism was provably wrong.
 
-## What the first version got wrong (it was backwards)
+## The first version got the mechanism backwards
 
 The original crystallizer ran PCA over the raw embeddings of surprising experiences, on the
 story that *failures concentrate where the hidden attribute matters, so the attribute has high
@@ -189,7 +194,7 @@ Speech-act is a strong sentence-embedding feature; the trick is the probe-vs-var
 asymmetry — shrink the attribute's share of pairwise *distance* while a supervised probe still
 recovers it.
 
-## The showdown, in two acts
+## Static tasks: where retrieval already wins (and why that's informative)
 
 **Act one: the run I almost published.** 100 training messages, 45 held-out with memory
 frozen, four seeds, four arms — including an **Oracle arm** (no memory, the true flip-table
@@ -198,13 +203,12 @@ story: RAG won, but the compressor had "found the planted polarity axis live" an
 correct-axis rule, and the Oracle sat below the copy ceiling. I had the narrative half-drafted.
 
 Then a review pass over the experiment code found two more silent bugs — in a project whose
-founding lesson was already "three bugs made surprise a constant." **Bug four:** the
-crystallizer stored the model's entire chain-of-thought (~1.2k characters of `<thought>`
-rambling) as the "axiom" and injected it verbatim into every Treatment context — sabotaging
-the very arm under test. **Bug five:** the surprise probe required the whole label inside one
-token, and the tokenizer splits ESCALATE into `ES`-something — so for two of three classes,
-"surprise" had quietly become a constant *again* (instance number three of the same bug
-class). Verified live before fixing: NLLs of 7.0/0.01/7.0 became 4.57/0.01/11.55 after a
+founding lesson was already "three bugs made surprise a constant." The crystallizer stored
+the model's entire chain-of-thought (~1.2k characters of `<thought>` rambling) as the "axiom"
+and injected it verbatim into every Treatment context — sabotaging the very arm under test.
+And the surprise probe required the whole label inside one token, and the tokenizer splits
+ESCALATE into `ES`-something — so for two of three classes, "surprise" had quietly become
+a constant *again*. Verified live before fixing: NLLs of 7.0/0.01/7.0 became 4.57/0.01/11.55 after a
 one-line prefix match. The compromised run is archived in `results/archived_prefix_bug/`, because the
 archaeology *is* the project.
 
@@ -246,17 +250,16 @@ Three findings survived the cleanup, and they're better than the story they repl
   came close. Zero axioms is what a well-calibrated lossy compressor *does* with no compressible
   signal.
 
-## What Titans gets for free, and what legibility costs
+## The legibility tradeoff: what you gain and what it costs
 
-Here is the deepest thing the failed showdown taught me, and it's a direct consequence of the
-substrate swap. **Titans never pays this tax.** When surprise is compressed into weights, applying
-the memory is just the forward pass — rule-following is free, baked in. When surprise is
-compressed into *language*, application becomes a capability tax collected at inference: the
-model has to read the rule, bind it to the current input, and execute the conditional. A 4B
-model can't — it copies better than it follows, so RAG is the structurally *correct* memory for
-it, not just a strong baseline.
+The static-task results clarified an important tradeoff in the substrate swap. **Titans never pays
+this tax.** When surprise is compressed into weights, applying the memory is just the forward
+pass — rule-following is free, baked in. When surprise is compressed into *language*, application
+becomes a capability tax collected at inference: the model has to read the rule, bind it to
+the current input, and execute the conditional. A 4B model can't — it copies better than it
+follows, so RAG is the structurally *correct* memory for it, not just a strong baseline.
 
-So the honest scope of "lossy compressive surprise-memory → rules" is now sharp:
+This sharpened the scope of "lossy compressive surprise-memory → rules":
 
 - **The compression side works, and is calibrated, not just asserted**: surprise-gated
   capture, spectral detection with a measured ROC (false-positive rate 0.00; fires past ~8×
@@ -276,9 +279,11 @@ So the honest scope of "lossy compressive surprise-memory → rules" is now shar
   (`docs/NEXT_EXPERIMENT.md`). Legibility still buys what weights never can: audit,
   portability across models, human override — and now the experiment that could prove it pays.
 
-## Act three: breaking copying with time (pilot, one seed)
+## Breaking copying with time: the Rule-Shift experiment
 
-That experiment has now run its pilot, and it did the thing.
+The static-task results said: find a task where retrieval *can't* win. The answer was time —
+a rule that changes mid-run, so stale exemplars keep retrieving perfectly and answering wrongly.
+The pilot ran, and it did the thing.
 
 The setup, briefly. First the executor tax got paid: a 60-item pre-test (**RFμ**) sweeping
 candidate models found that gemma4:12b follows a pasted prose rule at 0.983 **even with five
@@ -297,19 +302,21 @@ rather than by peeking: the aggregate copy-ceiling gate was unachievable by cons
 (only the request row shifts, so report queries stay copyable forever — the gate now binds on
 the shifted row), and the pre-registered cPCA detector is provably blind to this failure
 structure (post-shift failures concentrate on one polarity, successes on the other — a
-*location* difference, which covariance contrasts cancel). The amended detector — a
+*location* difference — the two groups' means shift, but their covariances stay the same, so
+cPCA, which looks for directions where one group is more *spread out* than the other, sees
+nothing). The amended detector — a
 two-sample mean contrast under the identical permutation-edge/stability/novelty gates — got
 the same treatment as the original: a synthetic ROC at the pilot's exact configuration.
 False-positive rate at pure noise 0.00–0.05; at n ≥ 30 failures it fires at 1.00 from *half*
 the noise edge upward, though at n = 25 it tops out at 0.80–0.90 and is non-monotonic — the
 sample-size floor is real (`results/calibration/gate_roc_mean.json`).
 
-And then the pipeline earned its keep — twice, because the first pilot surfaced **the fourth
-bug in the corrupted-signal class**:
-the crystallizer's token budget ran out inside its `<thought>` block and 1.4k characters of
-truncated chain-of-thought were stored and injected as the "axiom." The blind axiom audit (score every
-fired axiom against the planted rule *before* unblinding accuracy) caught it, in a project
-whose founding lesson is that this bug class recurs. The fixed crystallizer — retry for a bare
+And then the pipeline earned its keep — twice, because the first pilot surfaced **another
+bug in the same class**: the crystallizer's token budget ran out inside its `<thought>` block
+and 1.4k characters of truncated chain-of-thought were stored and injected as the "axiom."
+The blind axiom audit (score every fired axiom against the planted rule *before* unblinding
+accuracy) caught it — the fifth silent bug in the project, and the third where corrupted
+signal masqueraded as a working system. The fixed crystallizer — retry for a bare
 `RULE:` line, never store scaffolding — produced a genuinely legible rule and scored *higher*:
 
 | Arm (held-out, post-shift labels, disjoint vocab) | Accuracy |
@@ -345,19 +352,18 @@ well below 0.922. No exemplar policy over this buffer reaches the treatment numb
 The honest scope: this is **one seed and one crystallization event**, on a task built to be
 winnable (rank-1, embedding-visible — the visibility lesson applied in reverse). The
 crystallized rule is extensional — it enumerates markers rather than naming the
-request-vs-report concept — and the ablation that would isolate the spectral gate's value
-over a naive "summarize recent failures every N batches" trigger hasn't run. The five-seed
-pre-registered decision is next. But the mechanism's full loop — mistakes → gated detection →
+request-vs-report concept. But the mechanism's full loop — mistakes → gated detection →
 one legible sentence → exemplars retired → near-oracle accuracy — has now happened outside a
-thought experiment.
+thought experiment. The five-seed pre-registered replication comes next.
 
-### The replication: a miss that located the real bottleneck
+### The pre-registered replication: +0.078 vs a +0.10 bar
 
 Four more seeds ran, and the pre-registered endpoint missed. Pooled over 450 paired
 held-out items: Eigen 0.658 vs the recency kill-arm 0.580 — Δ = +0.078 against the +0.10
 bar. The direction is real (89-vs-54 discordant pairs, p = 0.002), but I set an effect-size
 bar precisely so a significant-but-small pooled number couldn't be dressed up as a win, and
-it did its job. Verdict: miss — but a miss with an unusually clean decomposition.
+it did its job. Verdict: miss — but a miss with an unusually clean decomposition, and the
+decomposition pointed directly at what to fix.
 
 The decomposition is unusually clean, because the architecture leaves no partial credit.
 The gate fired on **one seed in five**. On that seed, treatment beat the kill arm by +0.389
@@ -379,78 +385,44 @@ false-fire budget — accumulate per-check permutation p-values into decayed log
 fire when the total clears the level that noise reaches only 5% of the time.
 
 So I built exactly that gate and calibrated it, threshold tuned on synthetic noise only —
-and **the calibration cancelled its own re-run**. Two findings. First, the honest
-threshold is much higher than independence would suggest (the noise null's evidence
-quantile runs ~2× the independent-checks prediction), because consecutive detection
-windows share five-sixths of their residuals — even noise looks "direction-stable" under
-that much overlap, which quietly demotes the strongest-looking evidence the shut seeds
-had. Second, at that budget the evidence-accumulating gate fires no more often than the
-crude streak rule anywhere on the grid. And the sweep's ratio column locates the shut
-seeds precisely: detection under either rule needs the statistic sustained at ~1.05× the
-noise edge; pure noise averages 0.87×; the shut seeds lived at 0.81–0.85×. They weren't
-threshold-starved. On the statistic the gate watches, they looked **signal-starved** — no gate
-honoring a false-fire budget fires there, and a gate that would have is a gate that compresses
-noise.
+and **the calibration cancelled its own re-run**. The honest threshold is much higher than
+independence would suggest (consecutive windows share five-sixths of their residuals — noise
+looks "direction-stable" under that overlap), and at that budget the evidence-accumulating
+gate fires no more often than the crude streak rule anywhere on the grid. The shut seeds
+lived at 0.81–0.85× the noise edge; detection needs ~1.05×. Verdict: **signal-starved**.
 
-That was where this ended until the ablation ran. **It didn't hold.** Forced to crystallize
-from those same four windows with no gate at all, every shut seed wrote a correct rule —
-4 of 4, both polarities, against a pre-registered bar of 2. The signal was in the episodes.
+Then the ablation: forced to crystallize from those same four windows with no gate, every
+shut seed wrote a correct rule — 4 of 4, both polarities. The signal was in the episodes.
 What the gate was telling the truth about was its own statistic, not the stream.
 
-The honest qualifier: the ablation had to reconstruct which trials failed, because per-trial
-correctness was never persisted, and that reconstruction is *cleaner* than live reality — live
-failures include ordinary executor mistakes that are noise, not rule-shift signal. So some of
-the gap between "sub-threshold live" and "supra-threshold rebuilt" is a better failure signal
-rather than better featurization. Which makes the next move a harness change rather than a
-modeling one: store per-trial correctness, then ask the featurization question with a split
-you can trust.
+That kicked off two more rounds of diagnosis. The pattern matters more than the details:
 
-That harness change got made, and the answer arrived in two stages — which is worth telling in
-order, because the first stage was wrong.
+| Diagnosis | How tested | Verdict |
+|---|---|---|
+| Gate is signal-starved (spectral statistic too weak) | Ungated ablation: crystallize without the gate | **Overturned** — 4/4 correct rules; signal present, gate blind to it |
+| Featurization is the bottleneck (noisy failure labels) | Store per-trial correctness, replay seed 23 | **Overturned** — λ₁ identical between replay and live; the noise *edge* moved, not the signal |
+| Gate runs with no margin (estimator variance dominates) | Replay all four shut seeds | **Held** — λ₁/edge spans 0.78–1.28×; edge varies 1.31× on identical data; which side a seed lands on is decided by variance as much as structure |
 
-**Stage one, one seed.** Seed 23, replayed with real per-trial labels over unchanged
-featurization: ratio 0.95, tracking the live run's 0.82 rather than the proxy's 1.46. Real
-labels did not rescue the gate. Conclusion: featurization is the bottleneck.
+The third diagnosis reordered the work: the hand-tuned streak rule and permutation quantile
+were stand-ins for a sequential test with an actual error guarantee — an anytime-valid
+e-process formulation.
 
-**Stage two, the other three seeds.** It didn't hold. Across all four shut seeds, λ₁ came back
-*identical* between the replay and the live run — which means the replay reproduces exactly
-what the gate saw, and therefore every difference between those two ratios is the permutation
-**noise edge** moving, not the signal. On seed 18 that alone flips the verdict: the same
-λ₁ = 0.04107 is above one edge estimate (0.03998) and below the other (0.05232), a 31 %
-disagreement on identical data. And seed 7, whose original run never crossed the edge, reached
-**two of the three** consecutive detections needed — missing a fired gate only because the
-trial stream ran out of batches.
+Stated plainly: I twice drew a confident conclusion from one seed and had to walk it back.
+The mechanism claim — detect, distill, retire, and beat copying — survived every revision.
+The claims about *why detection fails* did not.
 
-So act three ends the way act two did: the headline number lost to the bar, and the autopsy is
-worth more than the number. Conditional on detection, compression beats copying by a wide,
-legible margin. Detection is the bottleneck — but the four-seed replay does not support the
-tidy story that the *featurization* is what's broken. λ₁/edge on real labels spans 0.78–1.28 across every seed, and the edge itself moves up to 1.31× on identical data. **The gate isn't
-obviously mis-featurized or mis-thresholded; it runs with no margin**, and which side of the
-line a seed lands on is decided by estimator variance as much as by structure.
-
-That reorders the work. Stabilizing the noise edge comes first — more permutation draws, or a
-pooled estimate across checks — because until a featurization change can be distinguished from
-a lucky draw, measuring one teaches you nothing. Then the more interesting move is to delete
-both knobs: the permutation quantile *and* the three-consecutive-detections rule are hand-tuned
-stand-ins for a sequential test with an actual error guarantee, which is what an
-anytime-valid/e-value formulation provides.
-
-The uncomfortable version, stated plainly: I twice drew a confident conclusion from one seed and
-had to walk it back. First the "signal-starved" calibration verdict, overturned by the ungated
-ablation. Then "featurization is the bottleneck," overturned by three more replays. The
-mechanism claim — detect, distill, retire, and beat copying — survived every one of those
-revisions. The claims about *why detection fails* did not.
-
-### The rebuild: the bar cleared
+### The rebuild: +0.242 on five seeds
 
 The third answer held. Detection was never a featurization problem or a threshold problem —
 it was the **wrong signal channel**. The gate watched a 768-dimensional contrast statistic
 that on real data sits at 0.78–1.28× a noise edge which itself varies 1.31× on identical
 inputs; recomputed from the committed telemetry, it fires on **0 of 5** seeds. Meanwhile the
 agent's own correctness stream carries the same event unmistakably — accuracy falls 0.12–0.26
-at the shift on every seed. A betting e-process on that stream, plus the observation that
-under a stable rule the label set is closed (so a never-before-seen label *is* the change),
-fires **5 of 5 at +1 to +6 trials, with no pre-shift false alarms**.
+at the shift on every seed. A betting e-process on that stream — a sequential test that
+compounds evidence like repeated bets and stays valid whenever you stop (the e-value idea
+from the autopsy was right; it had been pointed at the wrong stream) — plus the observation
+that under a stable rule the label set is closed (so a never-before-seen label *is* the
+change), fires **5 of 5 at +1 to +6 trials, with no pre-shift false alarms**.
 
 Detection was the easy half. The rule the agent then wrote was still stale — correct on the
 class that didn't change, wrong on the class that did — and that turned out to be a window
@@ -492,7 +464,7 @@ diagnosis while the thing itself was fine. The instrument that eventually worked
 better statistic — it was noticing the agent already knew it was failing, and reading that
 instead.
 
-## What this models in the wild
+## Where stale retrieval breaks in production
 
 The structure being simulated — *repeated decisions with after-the-fact feedback, a policy
 that changes without announcement, and a memory of past cases that silently flips from asset
@@ -573,8 +545,7 @@ reading, which is a governance feature only if a human actually reviews the rule
 It's cheaply testable on the existing harness: flip p% of feedback labels, sweep p, and
 measure where the copy ceiling crosses below rule accuracy and whether crystallization
 precision survives. The pre-registerable claim: *there is a disagreement rate above which
-compressed rules beat copying even with no shift at all* — compression as denoising. That
-experiment is queued behind the ungated-trigger ablation the replication's miss motivated.
+compressed rules beat copying even with no shift at all* — compression as denoising.
 
 What survived every revision — the original theory disproved, three diagnostic hypotheses
 overturned, five silent bugs found — is the mechanism itself: detect structure in errors,
