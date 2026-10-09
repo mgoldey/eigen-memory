@@ -9,10 +9,85 @@ what the model gets wrong and writes itself instructions. The path there took fo
 experiments, five silent bugs, and two wrong diagnoses, and the documentation preserves all
 of it because the diagnostic work is the interesting part.*
 
-*This post is written in the order the work happened — pre-registrations in future tense,
-results resolving them in the next section.*
+*This post is written in the order the work happened — starting with the thought that
+kicked it off, then pre-registrations in future tense, with results resolving them in the
+next section.*
 
 ---
+
+## Where this started: a podcast, a lawnmower, and a question about forgetting
+
+This repo started while I was mowing the grass with memory and learning on my mind. I was
+listening to a Freakonomics episode about sleep <!-- TODO: add episode title + link; I could
+not identify the exact episode -->, and the idea I took from it was that forgetting is part of
+how memory works, not a failure of it. You learn something by repetition, and what makes
+repetition work is that the incidental details fade while the stable ones survive. Sleep is
+where much of that happens: the leading account in the sleep literature is that the brain
+consolidates what mattered and prunes the rest (Crick's 1983 "reverse learning" hypothesis
+is the classic version). Forgetting is the filter that makes the memory useful.
+
+That reminded me of Dan Povey's **backstitch** paper ([Wang, Peddinti, Xu, Zhang, Povey &
+Khudanpur, Interspeech 2017](https://www.isca-archive.org/interspeech_2017/wang17h_interspeech.html);
+a longer version that extends it beyond speech is on
+[Povey's site](https://danielpovey.com/files/2017_nips_backstitch.pdf)). On each minibatch it
+takes a step *backward* with a small negative learning rate, then a step *forward* with a
+larger one. The authors frame it as a crude way to cancel the systematic bias that comes from
+fitting a finite sample, and report about 10% relative improvement over strong lattice-free
+MMI acoustic models. It also gave me a way to think about optimization: how you update on
+the latest data matters as much as what the data says. The connection I made is loose and I
+won't oversell it, but both ideas share a stance: don't absorb the most recent evidence at
+face value. Sleep prunes the idiosyncratic details, and backstitch undoes the bias of the
+sample you just fit.
+
+Then I read the **Titans** paper, which turns that stance into a mechanism: use *surprise*
+as the metric for what deserves attention and what gets written to memory.
+
+Thinking about Titans pulled a broader question into focus. Every sequence-modeling approach
+is really an answer to "how compressible is attention?" How much do you have to keep, how
+much do you have to track, and where should attention go? Full attention keeps everything
+and pays quadratically. Linear-attention and recurrent variants squeeze the past into a
+fixed state and pay in fidelity. A fixed cache pays by forgetting on a schedule. Titans pays
+by forgetting according to *surprise*, which is a smarter allocation of the same budget.
+
+But Titans is an architecture you pretrain. I wanted to know what the same idea looks like
+at **inference**, for a frozen model you can't retrain. I looked around, didn't find that
+exact combination, and saw room to build something. (Adjacent ideas exist, and I cover them
+below. Reflexion, ExpeL and Generative Agents all consolidate experience into text. The
+narrower seam I'm claiming is a surprise signal read straight from the model's logprobs,
+plus a consolidation step gated on evidence instead of a schedule.)
+
+The first version of the idea was simple:
+
+1. **Surprise from logprobs.** When the model finds the true outcome very unlikely, that
+   episode is worth saving. This is Titans' economics, read off the logits instead of
+   computed from gradients.
+2. **Crystallize.** Surprise alone just gives you a bigger pile of episodes. So a second LLM
+   pass asks: *something surprising happened, and it has happened enough times, so what is
+   the rule about this system that explains it?* The pile of episodes becomes one sentence.
+
+That is the adaptive-learning loop I hadn't seen elsewhere: surprise decides what to
+remember, and repetition decides what to abstract. It's the Freakonomics idea turned into
+a pipeline.
+
+Then I tested it on ordinary tasks, and **it did nothing.** On static, well-behaved test
+cases it matched baseline RAG, and the sections below on static tasks are the long, honest
+autopsy of why. That failure was the most useful result in the project because it forced
+the real question: *when does this kind of memory matter at all?* If the rules never change,
+nearest-neighbor retrieval already has the answer, and any extra machinery is overhead.
+
+The answer is **when the rules change.** Docs go stale. Support tickets go stale. The state
+of a system drifts. An enterprise process gets revised on a Tuesday and nobody re-indexes
+the knowledge base. In all of those, a retrieval memory doesn't just fail to help. It
+confidently retrieves the *old* answer, and the better the retrieval, the worse the error.
+Getting past that takes an update procedure: notice that the world stopped matching the
+memory, work out what changed, and write that down. That procedure is where this approach
+earns its keep, and it's the thread the rest of this post follows.
+
+I'll make a claim here that I think holds even if my particular mechanism doesn't. A modern
+memory architecture needs *some* way to update itself when the underlying reality shifts.
+Surprise, reflect and crystallize into rules is one candidate, and the evidence for it is in
+the rest of this post. But I'd argue that appending to an ever-growing store with no
+revision step is not a complete design.
 
 ## The lineage: what Titans gets right, and what it leaves on the table
 
@@ -195,6 +270,10 @@ asymmetry — shrink the attribute's share of pairwise *distance* while a superv
 recovers it.
 
 ## Static tasks: where retrieval already wins (and why that's informative)
+
+This is the "it did nothing" part of the story from the opening, told in full. The goal was
+to find a task where compressing into rules *should* beat copying a neighbor, and the
+sections that follow show the several ways that didn't work before it did.
 
 **Act one: the run I almost published.** 100 training messages, 45 held-out with memory
 frozen, four seeds, four arms — including an **Oracle arm** (no memory, the true flip-table
@@ -553,12 +632,19 @@ compress it into a sentence, retire the sentence when it stops being true. Every
 *why detection fails* had to be replaced; the claim about *what happens when detection
 succeeds* held from the first seed to the last.
 
+Back to the lawn. The Freakonomics point was that forgetting is part of memory, and that is
+the design principle the whole project ended up proving out the hard way. The useful memory
+isn't the one that keeps everything. It's the one that knows what to let go of, notices when
+what it knows has gone stale, and replaces it. Surprise tells you *when* to look, and a
+legible rule is what you write down after looking.
+
 The one-line version: **compress into weights when your model is small; compress into
 sentences when your model can read.**
 
 ---
 
 *Lineage: [Titans](https://arxiv.org/abs/2501.00663) (surprise-gated test-time memory),
+[Backstitch](https://www.isca-archive.org/interspeech_2017/wang17h_interspeech.html) (negative steps to cancel finite-sample bias),
 [RepE](https://arxiv.org/abs/2310.01405) (PCA over contrastive differences),
 [cPCA](https://arxiv.org/abs/1709.06716) (target-vs-background spectra),
 [BBP 2005](https://arxiv.org/abs/math/0403022) (the detectability edge), and the
