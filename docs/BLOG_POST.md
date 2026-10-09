@@ -17,14 +17,14 @@ next section.*
 
 ## Where this started: a podcast, a lawnmower, and a question about forgetting
 
-This repo started while I was mowing the grass with memory and learning on my mind. I was
+This project started while I was mowing the grass with memory and learning on my mind. I was
 listening to a Freakonomics episode about sleep <!-- TODO: add episode title + link; I could
 not identify the exact episode -->, and the idea I took from it was that forgetting is part of
 how memory works, not a failure of it. You learn something by repetition, and what makes
 repetition work is that the incidental details fade while the stable ones survive. Sleep is
-where much of that happens: the leading account in the sleep literature is that the brain
-consolidates what mattered and prunes the rest (Crick's 1983 "reverse learning" hypothesis
-is the classic version). Forgetting is the filter that makes the memory useful.
+where much of that happens: one long-standing account is that the brain consolidates what
+mattered and prunes the rest (Crick's 1983 "reverse learning" hypothesis is the classic
+version). Forgetting is the filter that makes the memory useful.
 
 That reminded me of Dan Povey's **backstitch** paper ([Wang, Peddinti, Xu, Zhang, Povey &
 Khudanpur, Interspeech 2017](https://www.isca-archive.org/interspeech_2017/wang17h_interspeech.html);
@@ -39,15 +39,16 @@ won't oversell it, but both ideas share a stance: don't absorb the most recent e
 face value. Sleep prunes the idiosyncratic details, and backstitch undoes the bias of the
 sample you just fit.
 
-Then I read the **Titans** paper, which turns that stance into a mechanism: use *surprise*
-as the metric for what deserves attention and what gets written to memory.
+Then I read the **Titans** paper ([Behrouz, Zhong & Mirrokni, arXiv:2501.00663](https://arxiv.org/abs/2501.00663)),
+which turns that stance into a mechanism: use *surprise* as the metric for what deserves attention and what gets written to memory.
 
 Thinking about Titans pulled a broader question into focus. Every sequence-modeling approach
 is really an answer to "how compressible is attention?" How much do you have to keep, how
 much do you have to track, and where should attention go? Full attention keeps everything
 and pays quadratically. Linear-attention and recurrent variants squeeze the past into a
 fixed state and pay in fidelity. A fixed cache pays by forgetting on a schedule. Titans pays
-by forgetting according to *surprise*, which is a smarter allocation of the same budget.
+by forgetting according to *surprise*, which is a different allocation of the same budget.
+(The table in the next section places this project on the same axis.)
 
 But Titans is an architecture you pretrain. I wanted to know what the same idea looks like
 at **inference**, for a frozen model you can't retrain. I looked around, didn't find that
@@ -60,57 +61,60 @@ The first version of the idea was simple:
 
 1. **Surprise from logprobs.** When the model finds the true outcome very unlikely, that
    episode is worth saving. This is Titans' economics, read off the logits instead of
-   computed from gradients.
+   computed from gradients. The forgetting lives here: once memory handles a case it stops
+   being surprising, so the store stops growing on its own.
 2. **Crystallize.** Surprise alone just gives you a bigger pile of episodes. So a second LLM
    pass asks: *something surprising happened, and it has happened enough times, so what is
    the rule about this system that explains it?* The pile of episodes becomes one sentence.
 
-That is the adaptive-learning loop I hadn't seen elsewhere: surprise decides what to
-remember, and repetition decides what to abstract. It's the Freakonomics idea turned into
-a pipeline.
+"Enough times" is doing a lot of work in that sentence. Deciding when a pile of surprises
+actually shares a pattern, rather than just being a pile, turned out to be most of the
+engineering, and my first answer was wrong.
 
-Then I tested it on ordinary tasks, and **it did nothing.** On static, well-behaved test
-cases it matched baseline RAG, and the sections below on static tasks are the long, honest
-autopsy of why. That failure was the most useful result in the project because it forced
-the real question: *when does this kind of memory matter at all?* If the rules never change,
+That is the adaptive-learning loop I hadn't seen elsewhere: surprise decides what to
+remember, and repetition decides what to abstract. It's the sleep idea turned into a
+pipeline.
+
+Then I tested it on ordinary tasks, and **it bought nothing.** The compressor worked, in the
+sense that it wrote true rules and stayed silent when there was no rule to find, but on
+static, well-behaved tests the agent with rules scored the same as plain retrieval. The
+static-task sections below are the autopsy. That non-result was the most useful thing in
+the project because it forced the real question: *when does this kind of memory matter at all?* If the rules never change,
 nearest-neighbor retrieval already has the answer, and any extra machinery is overhead.
 
 The answer is **when the rules change.** Docs go stale. Support tickets go stale. The state
 of a system drifts. An enterprise process gets revised on a Tuesday and nobody re-indexes
-the knowledge base. In all of those, a retrieval memory doesn't just fail to help. It
-confidently retrieves the *old* answer, and the better the retrieval, the worse the error.
+the knowledge base. In all of those, a retrieval memory doesn't just fail to help on the cases that changed. It
+confidently retrieves the *old* answer for them, and nothing in the retrieval score tells
+you it has.
 Getting past that takes an update procedure: notice that the world stopped matching the
 memory, work out what changed, and write that down. That procedure is where this approach
-earns its keep, and it's the thread the rest of this post follows.
+should pay off, and it's the thread the rest of this post follows.
 
 I'll make a claim here that I think holds even if my particular mechanism doesn't. A modern
 memory architecture needs *some* way to update itself when the underlying reality shifts.
-Surprise, reflect and crystallize into rules is one candidate, and the evidence for it is in
-the rest of this post. But I'd argue that appending to an ever-growing store with no
+Surprise, reflect and crystallize into rules is one candidate, and the evidence for it, on one synthetic task
+with a clean rule flip, is below. But I'd argue that appending to an ever-growing store with no
 revision step is not a complete design.
 
-## The lineage: what Titans gets right, and what it leaves on the table
+## The mechanism: Titans' economics on a different substrate
 
-Google's **Titans** (Behrouz, Zhong & Mirrokni, [arXiv:2501.00663](https://arxiv.org/abs/2501.00663))
-is the cleanest recent statement of a very old principle: memory should be *lossy, and surprise
-should decide what survives*. Titans bolts a neural long-term memory onto attention and trains
-it **at test time**: each incoming token produces a "momentary surprise" (the gradient of an
-associative-memory loss with respect to the memory's parameters), blended with a momentum-like
-"past surprise" and an adaptive forgetting gate. High-surprise inputs reshape the memory;
-unsurprising ones fade. The store is a small MLP — fixed capacity, continuously overwritten,
-fundamentally **opaque**. It works: Titans outscales Transformers past 2M-token contexts.
+Titans bolts a small neural memory onto attention and trains it at test time. Each token's
+"momentary surprise" (the gradient of an associative-memory loss with respect to the
+memory's parameters) decides how much it reshapes the memory, and a forgetting gate lets
+unsurprising content fade. The store is a small MLP: fixed capacity, continuously
+overwritten, opaque. One nuance matters for everything below: only the *writes* happen at
+test time. The ability to write is meta-learned during pretraining (the key/value
+projections and all three gates), so a frozen GPT- or Gemma-class model can never have it.
 
-One nuance matters for everything that follows: only the memory *writes* happen at test time.
-The ability to write is trained in — the key/value projections and all three gates (surprise
-scale, past-surprise decay, forgetting) are meta-learned end-to-end during pretraining. Titans
-is an architecture you train from scratch, not a bolt-on; a frozen GPT- or Gemma-class model
-can never have it.
-
-This project — a local rig with a 4B model, pgvector, and no training loop — takes the same
-core idea and swaps the substrate. The bet: an agent's surprising experiences don't have to
-be compressed into weights nobody can read. They can be compressed into **rules** — short
+What I built, on a local rig with a 4B model, pgvector, and no training loop, keeps those
+economics and swaps the substrate. An agent's surprising experiences don't have to be
+compressed into weights nobody can read. They can be compressed into **rules**: short
 natural-language axioms the agent writes about its own failures, auditable by a human,
 portable across models, injectable into any context window.
+
+*This is the final pipeline. The rest of the post is how it got here; the first version had
+only the spectral trigger and no validation step.*
 
 ```mermaid
 flowchart LR
@@ -150,8 +154,8 @@ ablation isolating the surprise gate itself — gated vs store-everything — is
 it has not yet been tested as a variable.)
 
 The endgame compression ratio is the pitch: in the live TREC run below, **120 trials of
-experience distilled into exactly one rule** — the agent's entire semantic memory fit in a
-tweet, and the rule was *true*.
+experience distilled into exactly one rule** — the agent's entire semantic memory was one
+sentence, and the rule was *true*.
 
 | | Titans | This project |
 |---|---|---|
@@ -160,6 +164,7 @@ tweet, and the rule was *true*.
 | Memory substrate | MLP weights, updated at test time | episodic vectors + natural-language axioms |
 | Compression | continuous, opaque, fixed-capacity | discrete, **legible**, rate-gated |
 | Forgetting | data-dependent weight decay | memory-conditional surprise (solved items stop registering) |
+| Memory budget | fixed-size weights, forgetting by surprise | growing episodic buffer gated by surprise, plus a few rules |
 | Applies memory by | forward pass (free) | the model *reading a rule* (a capability tax — see the ending) |
 
 The interesting engineering question — and the one this post is really about — is the one lossy
@@ -237,8 +242,8 @@ First outing of the rebuilt kernel, on the two old tasks, with a falsifiable pre
 > location or descriptive answers should be labeled LOC."*
 
 One hundred twenty trials, lossily compressed to twenty words — and the words are a **correct
-rule about the task's hidden structure**, written by a 4B model. That is the artifact this
-architecture exists to produce.
+rule about the task's hidden structure**, written by a 4B model. That is the kind of output this
+architecture is meant to produce.
 
 And the refusal side is now measured, not asserted. A synthetic ROC drives the *actual*
 kernel over planted rank-1 contrasts at controlled multiples of its own noise edge
@@ -250,6 +255,10 @@ once the spike is far above the floor. The gate buys its zero false positives wi
 detection margin. Remember that number; it's about to matter.
 
 ## Where rule-compression should beat retrieval — building the test
+
+This is where the "it bought nothing" result from the opening starts. The goal was to find
+a task where compressing into rules *should* beat copying a neighbor, and the next two
+sections show the several ways that didn't work before it did.
 
 Compression only pays where a few rules explain many cases *and lookup can't*. Two pre-run
 statistics locate that regime: **probe-AUC(B)** (is the hidden attribute in the embedding at
@@ -270,10 +279,6 @@ asymmetry — shrink the attribute's share of pairwise *distance* while a superv
 recovers it.
 
 ## Static tasks: where retrieval already wins (and why that's informative)
-
-This is the "it did nothing" part of the story from the opening, told in full. The goal was
-to find a task where compressing into rules *should* beat copying a neighbor, and the
-sections that follow show the several ways that didn't work before it did.
 
 **Act one: the run I almost published.** 100 training messages, 45 held-out with memory
 frozen, four seeds, four arms — including an **Oracle arm** (no memory, the true flip-table
@@ -362,7 +367,7 @@ This sharpened the scope of "lossy compressive surprise-memory → rules":
 
 The static-task results said: find a task where retrieval *can't* win. The answer was time —
 a rule that changes mid-run, so stale exemplars keep retrieving perfectly and answering wrongly.
-The pilot ran, and it did the thing.
+The pilot ran, and the mechanism worked.
 
 The setup, briefly. First the executor tax got paid: a 60-item pre-test (**RFμ**) sweeping
 candidate models found that gemma4:12b follows a pasted prose rule at 0.983 **even with five
@@ -390,7 +395,7 @@ False-positive rate at pure noise 0.00–0.05; at n ≥ 30 failures it fires at 
 the noise edge upward, though at n = 25 it tops out at 0.80–0.90 and is non-monotonic — the
 sample-size floor is real (`results/calibration/gate_roc_mean.json`).
 
-And then the pipeline earned its keep — twice, because the first pilot surfaced **another
+And then the checks caught a bug — twice, because the first pilot surfaced **another
 bug in the same class**: the crystallizer's token budget ran out inside its `<thought>` block
 and 1.4k characters of truncated chain-of-thought were stored and injected as the "axiom."
 The blind axiom audit (score every fired axiom against the planted rule *before* unblinding
@@ -416,8 +421,8 @@ on three consecutive checks, and crystallized exactly one axiom:
 > review' case which is FILE)."*
 
 Both polarity clusters map to the correct post-shift labels. And the parenthetical is a
-**stale fragment of the pre-shift rule** that a human auditor can see and strike — the
-auditability pitch writing its own demo. (It names a training-vocabulary marker that is absent
+**stale fragment of the pre-shift rule** that a human auditor can see and strike, which
+is what the auditability argument predicts. (It names a training-vocabulary marker that is absent
 from the disjoint held-out set; requests still scored 0.949, reports 0.902 — the 7 misses
 across 90 items were not traced to this clause.)
 
@@ -517,6 +522,10 @@ Validating candidates against recent trials and retiring them when they stop ear
 it, but only after the accept bar was fixed twice: once for margin (beating a baseline by one
 item out of ten is noise), and once because comparing a candidate to *the agent's own rate on
 the changed class* puts the bar on the floor — the agent has already collapsed there.
+
+This is the closest the project came to the backstitch stance from the opening: the newest
+evidence writes a candidate rule, but the rule has to earn its place against recent trials
+before it is allowed to steer anything.
 
 Five seeds, same pre-registered bar:
 
@@ -632,11 +641,13 @@ compress it into a sentence, retire the sentence when it stops being true. Every
 *why detection fails* had to be replaced; the claim about *what happens when detection
 succeeds* held from the first seed to the last.
 
-Back to the lawn. The Freakonomics point was that forgetting is part of memory, and that is
-the design principle the whole project ended up proving out the hard way. The useful memory
-isn't the one that keeps everything. It's the one that knows what to let go of, notices when
-what it knows has gone stale, and replaces it. Surprise tells you *when* to look, and a
-legible rule is what you write down after looking.
+Back to the lawn. The Freakonomics point was that forgetting is part of memory, and it is the
+principle this project kept running into from a different direction each time: a memory that
+keeps everything is not a good memory. A useful one knows what to let go of, notices when what
+it knows has gone stale, and replaces it. In the end, the signal that says *when* to look
+turned out to be nothing fancier than the agent's own error rate, and a legible rule is what
+you write down after looking. That is evidence from one synthetic task, not a proof, but it
+is the shape of memory I'd want.
 
 The one-line version: **compress into weights when your model is small; compress into
 sentences when your model can read.**
