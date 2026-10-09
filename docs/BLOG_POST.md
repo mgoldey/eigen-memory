@@ -18,16 +18,29 @@ next section.*
 ## Where this started: a podcast, a lawnmower, and a question about forgetting
 
 This repo started while I was mowing the grass with memory and learning on my mind. I was
-listening to a Freakonomics episode on why forgetting is part of memory, not a failure of it.
-You learn something by repeating it, and repetition works because the *wrong details fade*
-while the stable ones survive. Forgetting is the filter that makes the memory useful.
+listening to a Freakonomics episode about sleep <!-- TODO: add episode title + link; I could
+not identify the exact episode -->, and the idea I took from it was that forgetting is part of
+how memory works, not a failure of it. You learn something by repetition, and what makes
+repetition work is that the incidental details fade while the stable ones survive. Sleep is
+where much of that happens: the leading account in the sleep literature is that the brain
+consolidates what mattered and prunes the rest (Crick's 1983 "reverse learning" hypothesis
+is the classic version). Forgetting is the filter that makes the memory useful.
 
-That sent me to Dan Povey's backstitch paper, which takes a deliberate step backward before
-stepping forward to get a better optimization trajectory. The connection I made was loose and
-I'm not going to oversell it: both say that progress comes from treating the most recent
-evidence with suspicion instead of absorbing all of it. Then I read the **Titans** paper, which
-turns that intuition into a mechanism: use *surprise* as the metric for what deserves
-attention and what gets written to memory.
+That reminded me of Dan Povey's **backstitch** paper ([Wang, Peddinti, Xu, Zhang, Povey &
+Khudanpur, Interspeech 2017](https://www.isca-archive.org/interspeech_2017/wang17h_interspeech.html);
+a longer version that extends it beyond speech is on
+[Povey's site](https://danielpovey.com/files/2017_nips_backstitch.pdf)). On each minibatch it
+takes a step *backward* with a small negative learning rate, then a step *forward* with a
+larger one. The authors frame it as a crude way to cancel the systematic bias that comes from
+fitting a finite sample, and report about 10% relative improvement over strong lattice-free
+MMI acoustic models. It also gave me a way to think about optimization: how you update on
+the latest data matters as much as what the data says. The connection I made is loose and I
+won't oversell it, but both ideas share a stance: don't absorb the most recent evidence at
+face value. Sleep prunes the idiosyncratic details, and backstitch undoes the bias of the
+sample you just fit.
+
+Then I read the **Titans** paper, which turns that stance into a mechanism: use *surprise*
+as the metric for what deserves attention and what gets written to memory.
 
 Thinking about Titans pulled a broader question into focus. Every sequence-modeling approach
 is really an answer to "how compressible is attention?" How much do you have to keep, how
@@ -631,6 +644,7 @@ sentences when your model can read.**
 ---
 
 *Lineage: [Titans](https://arxiv.org/abs/2501.00663) (surprise-gated test-time memory),
+[Backstitch](https://www.isca-archive.org/interspeech_2017/wang17h_interspeech.html) (negative steps to cancel finite-sample bias),
 [RepE](https://arxiv.org/abs/2310.01405) (PCA over contrastive differences),
 [cPCA](https://arxiv.org/abs/1709.06716) (target-vs-background spectra),
 [BBP 2005](https://arxiv.org/abs/math/0403022) (the detectability edge), and the
